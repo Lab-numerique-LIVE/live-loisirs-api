@@ -1,10 +1,10 @@
 # vliller-api
 
-Un API JSON similaire à l'API XML de VLille.
+Un API JSON similaire à l'API XML de VLille (les fautes d'anglais en moins ;-).
 
 ## GET /stations
 
-Retourne une liste de station au format :
+Retourne une liste de stations au format :
 ```json
 {
     "id": "1",
@@ -20,8 +20,8 @@ Retourne la station avec l'identifiant `:id` au format :
 ```json
 {
     "address": "MEL RUE DU BALLON ",
-    "bikes": "18",
-    "docks": "18",
+    "bikes": 18,
+    "docks": 18,
     "payment": "AVEC_TPE",
     "status": "0",
     "lastupd": "7 secondes"
