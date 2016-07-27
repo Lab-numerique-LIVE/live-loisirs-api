@@ -71,6 +71,9 @@ function xmlStationToJson($xmlStationString)
 
 $app = new \Slim\App;
 
+// CORS
+$app->add(new \CorsSlim\CorsSlim());
+
 /**
  * Return all stations
  */
