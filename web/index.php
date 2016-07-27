@@ -33,8 +33,8 @@ function xmlStationsToJson($xmlStationsString)
         $stations[] = [
             'id' => $marker->getAttribute('id'),
             'name' => $marker->getAttribute('name'),
-            'latitude' => floatval($marker->getAttribute('lat')),
-            'longitude' => floatval($marker->getAttribute('lng'))
+            'latitude' => (float) $marker->getAttribute('lat'),
+            'longitude' => (float) $marker->getAttribute('lng')
         ];
     }
 
@@ -59,8 +59,8 @@ function xmlStationToJson($xmlStationString)
     // use standard names and fix bad english tranlation...
     $station = [
         'address' => $stationElement->getElementsByTagName('adress')[0]->nodeValue,
-        'bikes' => $stationElement->getElementsByTagName('bikes')[0]->nodeValue,
-        'docks' => $stationElement->getElementsByTagName('attachs')[0]->nodeValue,
+        'bikes' => (int) $stationElement->getElementsByTagName('bikes')[0]->nodeValue,
+        'docks' => (int) $stationElement->getElementsByTagName('attachs')[0]->nodeValue,
         'payment' => $stationElement->getElementsByTagName('paiement')[0]->nodeValue,
         'status' => $stationElement->getElementsByTagName('status')[0]->nodeValue,
         'lastupd' => $stationElement->getElementsByTagName('lastupd')[0]->nodeValue
