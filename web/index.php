@@ -66,6 +66,12 @@ function xmlStationToJson($xmlStationString)
         'lastupd' => $stationElement->getElementsByTagName('lastupd')[0]->nodeValue
     ];
 
+    // BUG FIX
+    // If no bike and no dock, the status shouldn't be "0"
+    if ($station['bikes'] === 0 && $station['docks'] === 0) {
+        $station['status'] = "418";
+    }
+
     return $station;
 }
 
