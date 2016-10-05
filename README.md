@@ -27,3 +27,11 @@ Retourne la station avec l'identifiant `:id` au format :
     "lastupd": "7 secondes"
 }
 ```
+
+## Sources
+
+- Merci à Guillaume Libersat et Florian Le Goff https://github.com/glibersat/python-vlille
+
+## Licence
+
+GNU GPL v3
