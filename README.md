@@ -1,6 +1,6 @@
 # vliller-api
 
-Un API JSON similaire à l'API XML de VLille (les fautes d'anglais en moins ;-).
+Un API JSON similaire à l'API XML de VLille.
 
 ## GET /stations
 
