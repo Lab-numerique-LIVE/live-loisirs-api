@@ -6,6 +6,7 @@ use \Psr\Http\Message\ResponseInterface as Response;
 require '../vendor/autoload.php';
 
 const API_BASE_TOURCOING_RSS = 'https://agenda.tourcoing.fr/flux/rss/';
+const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.json?lang=fr';
 
 /**
  *
@@ -69,6 +70,81 @@ function xmlEventsToArray($xmlEventsString)
 /**
  * Undocumented function
  *
+ * @param [type] $jsonEvents
+ * @return void
+ */
+function roubaixEventsNormalizer($jsonEvents)
+{
+    $eventsArray = json_decode($jsonEvents, true)['events'];
+
+    $events = [];
+    foreach ($eventsArray as $event) {
+        $location = $event['location'];
+        $address = $location['address'] . ', ' . $location['postalCode'] . ' ' . $location['city'];
+
+        $events[] = [
+            'title' => $event['title']['fr'],
+            'description' => $event['description']['fr'],
+            'url' => $event['canonicalUrl'],
+            'image' => $event['thumbnail'],
+            'category' => '',
+            'startDate' => $event['firstDate'],
+            'endDate' => $event['lastDate'],
+            'location' => [
+                'latitude' => (float) $location['latitude'],
+                'longitude' => (float) $location['longitude'],
+                'name' => $location['name'],
+                'address' => $address,
+                'email' => '',
+                'url' => $location['website'],
+                'area' => ''
+            ],
+            'public' => [
+                'type' => '',
+                'label' => ''
+            ],
+            'rates' => []
+        ];
+    }
+
+    return $events;
+}
+
+/**
+ * @see https://stackoverflow.com/a/2910637/5727772
+ *
+ * @param [type] $a
+ * @param [type] $b
+ * @return void
+ */
+function date_compare($a, $b, $sortOn = 'startDate', $order = 'ASC')
+{
+    $t1 = strtotime($a[$sortOn]);
+    $t2 = strtotime($b[$sortOn]);
+    return $order === 'ASC' ? $t1 - $t2 : $t2 - $t1;
+}
+
+/**
+ * Merge Roubaix and Tourcoing events arrays
+ *
+ * @param [type] $eventsA
+ * @param [type] $eventsB
+ * @return void
+ */
+function mergeEvents($eventsA, $eventsB) {
+    $events = array_merge($eventsA, $eventsB);
+
+    // order by DESC on startDate
+    usort($events, function ($a, $b) {
+        return date_compare($a, $b, 'startDate', 'DESC');
+    });
+
+    return $events;
+}
+
+/**
+ * Undocumented function
+ *
  * @param [type] $client
  * @return void
  */
@@ -85,6 +161,30 @@ function getTourcoingEvents($client) {
     return xmlEventsToArray($xmlEvents);
 }
 
+/**
+ * Undocumented function
+ *
+ * @param [type] $client
+ * @return void
+ */
+function getRoubaixEvents($client)
+{
+    $jsonEvents = $client
+        ->get(API_BASE_ROUBAIX_JSON . '?offset=0&limit=100', [
+            'headers' => [
+                'Accept' => 'application/json'
+            ],
+            'query'
+        ])
+        ->getBody()
+        ->getContents();
+
+    return roubaixEventsNormalizer($jsonEvents);
+}
+
+/**
+ * Routing
+ */
 $app = new \Slim\App;
 
 // CORS
@@ -96,33 +196,12 @@ $app->add(new \CorsSlim\CorsSlim());
 $app->get('/events', function (Request $req, Response $res) {
     $client = new \GuzzleHttp\Client();
 
-    $events = getTourcoingEvents($client);
+    $tourcoingsEvents = getTourcoingEvents($client);
+    $roubaixEvents = getRoubaixEvents($client);
+
+    $events = mergeEvents($tourcoingsEvents, $roubaixEvents);
 
     return $res->withJson($events);
 });
-
-/**
- * Return a station by `id`
- */
-$app->get('/stations/{id}', function (Request $req, Response $res) {
-    $client = new \GuzzleHttp\Client();
-
-    $xmlStation = $client
-        ->get(API_BASE . '/xml-station.aspx', [
-            'query' => [
-                'borne' => $req->getAttribute('id')
-            ],
-            'headers' => [
-                'Accept' => 'application/xml'
-            ]
-        ])
-        ->getBody()
-        ->getContents();
-
-    $station = xmlStationToJson($xmlStation);
-
-    return $res->withJson($station);
-});
-
 
 $app->run();
