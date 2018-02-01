@@ -8,6 +8,32 @@ require '../vendor/autoload.php';
 const API_BASE_TOURCOING_RSS = 'https://agenda.tourcoing.fr/flux/rss/';
 const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.json?lang=fr';
 
+const MAX_DESCRIPTION_SIZE = 180;
+
+/**
+ * Crops text at MAX_DESCRIPTION_SIZE and adds '...' at the end
+ *
+ * @param [string] $text
+ * @return [string]
+ */
+function cropText($text) {
+    if (strlen($text) <= MAX_DESCRIPTION_SIZE) {
+        return $text;
+    }
+
+    return trim(substr($text, 0, MAX_DESCRIPTION_SIZE - 3)) . '...';
+}
+
+/**
+ * @see https://stackoverflow.com/a/7128879/5727772
+ *
+ * @param [string] $text
+ * @return [string]
+ */
+function clearText($text) {
+    return preg_replace('/\s+/', ' ', urldecode(html_entity_decode(strip_tags($text))));
+}
+
 /**
  *
  * @param  String $xmlEventsString
@@ -38,10 +64,15 @@ function xmlEventsToArray($xmlEventsString)
             ];
         }
 
+        // prepare descriptions
+        $longDescription = clearText($eventNode->getElementsByTagName('description')[0]->nodeValue);
+        $description = cropText($longDescription);
+
         // build event object
         $events[] = [
             'title' => $eventNode->getElementsByTagName('title')[0]->nodeValue,
-            'description' => $eventNode->getElementsByTagName('description')[0]->nodeValue,
+            'description' => $description,
+            'longDescription' => $longDescription,
             'url' => $eventNode->getElementsByTagName('link')[0]->nodeValue,
             'image' => $eventNode->getElementsByTagName('enclosure')[0]->getAttribute('url'),
             'category' => $eventNode->getElementsByTagName('category')[0]->nodeValue,
@@ -84,7 +115,8 @@ function roubaixEventsNormalizer($jsonEvents)
 
         $events[] = [
             'title' => $event['title']['fr'],
-            'description' => $event['description']['fr'],
+            'description' => cropText(clearText($event['description']['fr'])),
+            'longDescription' => clearText($event['longDescription']['fr']),
             'url' => $event['canonicalUrl'],
             'image' => $event['thumbnail'],
             'category' => '',
@@ -153,7 +185,9 @@ function getTourcoingEvents($client) {
         ->get(API_BASE_TOURCOING_RSS, [
             'headers' => [
                 'Accept' => 'application/rss+xml'
-            ]
+            ],
+            // 'verify' => false
+            // 'curl' => [CURLOPT_SSLVERSION => CURL_SSLVERSION_TLSv1]
         ])
         ->getBody()
         ->getContents();
@@ -173,8 +207,7 @@ function getRoubaixEvents($client)
         ->get(API_BASE_ROUBAIX_JSON . '?offset=0&limit=100', [
             'headers' => [
                 'Accept' => 'application/json'
-            ],
-            'query'
+            ]
         ])
         ->getBody()
         ->getContents();
@@ -185,7 +218,12 @@ function getRoubaixEvents($client)
 /**
  * Routing
  */
-$app = new \Slim\App;
+$container = new \Slim\Container([
+    'settings' => [
+        'displayErrorDetails' => true,
+    ],
+]);
+$app = new \Slim\App($container);
 
 // CORS
 $app->add(new \CorsSlim\CorsSlim());
@@ -200,6 +238,7 @@ $app->get('/events', function (Request $req, Response $res) {
     $roubaixEvents = getRoubaixEvents($client);
 
     $events = mergeEvents($tourcoingsEvents, $roubaixEvents);
+    // $events = $roubaixEvents;
 
     return $res->withJson($events);
 });
