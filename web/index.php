@@ -31,7 +31,7 @@ function cropText($text) {
  * @return [string]
  */
 function clearText($text) {
-    return preg_replace('/\s+/', ' ', urldecode(html_entity_decode(strip_tags($text))));
+    return preg_replace('/\s+/', ' ', urldecode(html_entity_decode(strip_tags(str_replace(['<br/>', '<BR/>'], ' ', $text)))));
 }
 
 /**
