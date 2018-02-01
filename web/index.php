@@ -82,7 +82,7 @@ function xmlEventsToArray($xmlEventsString)
                 'latitude' => (float) $locationNode->getAttribute('latitude'),
                 'longitude' => (float) $locationNode->getAttribute('longitude'),
                 'name' => $locationNode->getElementsByTagName('name')[0]->nodeValue,
-                'address' => $locationNode->getElementsByTagName('address')[0]->nodeValue,
+                'address' => clearText($locationNode->getElementsByTagName('address')[0]->nodeValue),
                 'email' => $locationNode->getElementsByTagName('email')[0]->nodeValue,
                 'url' => $locationNode->getElementsByTagName('link')[0]->nodeValue,
                 'area' => $locationNode->getElementsByTagName('area')[0]->nodeValue
