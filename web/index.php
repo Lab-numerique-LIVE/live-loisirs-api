@@ -3,12 +3,17 @@
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \Psr\Http\Message\ResponseInterface as Response;
 
+use \GuzzleHttp\Promise;
+use \GuzzleHttp\Client;
+
 require '../vendor/autoload.php';
 
 const API_BASE_TOURCOING_RSS = 'https://agenda.tourcoing.fr/flux/rss/';
 const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.json?lang=fr';
 
 const MAX_DESCRIPTION_SIZE = 180;
+
+\Moment\Moment::setLocale('fr_FR');
 
 /**
  * Crops text at MAX_DESCRIPTION_SIZE and adds '...' at the end
@@ -36,15 +41,15 @@ function clearText($text) {
 
 /**
  *
- * @param  String $xmlEventsString
+ * @param  String $xmlEvents
  * @return Array
  */
-function xmlEventsToArray($xmlEventsString)
+function tourcoingEventsNormalizer($xmlEvents)
 {
     $events = [];
 
     $dom = new DOMDocument;
-    $dom->loadXML($xmlEventsString);
+    $dom->loadXML($xmlEvents);
 
     // builds array of events from DOM
     $eventNodes = $dom->getElementsByTagName('item');
@@ -68,6 +73,9 @@ function xmlEventsToArray($xmlEventsString)
         $longDescription = clearText($eventNode->getElementsByTagName('description')[0]->nodeValue);
         $description = cropText($longDescription);
 
+        $startDate = explode('T', $eventNode->getElementsByTagName('date_start')[0]->nodeValue)[0];
+        $endDate = explode('T', $eventNode->getElementsByTagName('date_end')[0]->nodeValue)[0];
+
         // build event object
         $events[] = [
             'title' => $eventNode->getElementsByTagName('title')[0]->nodeValue,
@@ -76,8 +84,8 @@ function xmlEventsToArray($xmlEventsString)
             'url' => $eventNode->getElementsByTagName('link')[0]->nodeValue,
             'image' => $eventNode->getElementsByTagName('enclosure')[0]->getAttribute('url'),
             'category' => $eventNode->getElementsByTagName('category')[0]->nodeValue,
-            'startDate' => $eventNode->getElementsByTagName('date_start')[0]->nodeValue,
-            'endDate' => $eventNode->getElementsByTagName('date_end')[0]->nodeValue,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
             'location' => [
                 'latitude' => (float) $locationNode->getAttribute('latitude'),
                 'longitude' => (float) $locationNode->getAttribute('longitude'),
@@ -166,9 +174,9 @@ function date_compare($a, $b, $sortOn = 'startDate', $order = 'ASC')
 function mergeEvents($eventsA, $eventsB) {
     $events = array_merge($eventsA, $eventsB);
 
-    // order by DESC on startDate
+    // order by ASC on startDate
     usort($events, function ($a, $b) {
-        return date_compare($a, $b, 'startDate', 'DESC');
+        return date_compare($a, $b, 'startDate', 'ASC');
     });
 
     return $events;
@@ -181,18 +189,17 @@ function mergeEvents($eventsA, $eventsB) {
  * @return void
  */
 function getTourcoingEvents($client) {
-    $xmlEvents = $client
-        ->get(API_BASE_TOURCOING_RSS, [
+    return $client
+        ->getAsync(API_BASE_TOURCOING_RSS, [
             'headers' => [
                 'Accept' => 'application/rss+xml'
-            ],
-            // 'verify' => false
-            // 'curl' => [CURLOPT_SSLVERSION => CURL_SSLVERSION_TLSv1]
+            ]
         ])
-        ->getBody()
-        ->getContents();
+        ->then(function ($response) {
+            $xmlEvents = $response->getBody()->getContents();
 
-    return xmlEventsToArray($xmlEvents);
+            return tourcoingEventsNormalizer($xmlEvents);
+        });
 }
 
 /**
@@ -203,16 +210,46 @@ function getTourcoingEvents($client) {
  */
 function getRoubaixEvents($client)
 {
-    $jsonEvents = $client
-        ->get(API_BASE_ROUBAIX_JSON . '?offset=0&limit=100', [
+    return $client
+        ->getAsync(API_BASE_ROUBAIX_JSON . '?offset=0&limit=100', [
             'headers' => [
                 'Accept' => 'application/json'
             ]
         ])
-        ->getBody()
-        ->getContents();
+        ->then(function ($response) {
+            $jsonEvents = $response->getBody()->getContents();
 
-    return roubaixEventsNormalizer($jsonEvents);
+            return roubaixEventsNormalizer($jsonEvents);
+        });
+}
+
+/**
+ * Undocumented function
+ *
+ * @param [type] $events
+ * @param integer $days
+ * @return array
+ */
+function filterNextEvents($events, $days = 7) {
+    $day = new \Moment\Moment();
+    $nextEvents = [];
+
+    for ($i = 0; $i < $days; $i += 1) {
+        $nextEvents[] = [
+            'dayNumber' => (int) $day->getWeekday(),
+            'dayName' => ucfirst($day->getWeekdayNameShort()),
+            'events' => array_values(array_filter($events, function ($event) use ($day) {
+                // $day - $startEvent <= 0 AND $day - $endEvent >= 0
+                // meaning the event is started or starts today and isn't ending or ends today
+                return $day->from($event['startDate'])->getDays() <= 0 && $day->from($event['endDate'])->getDays() >= 0;
+            }))
+        ];
+
+        // next day
+        $day->addDays(1);
+    }
+
+    return $nextEvents;
 }
 
 /**
@@ -229,16 +266,34 @@ $app = new \Slim\App($container);
 $app->add(new \CorsSlim\CorsSlim());
 
 /**
- * Return all events
+ * Returns all next events
  */
 $app->get('/events', function (Request $req, Response $res) {
-    $client = new \GuzzleHttp\Client();
+    $client = new Client();
 
-    $tourcoingsEvents = getTourcoingEvents($client);
-    $roubaixEvents = getRoubaixEvents($client);
+    $results = Promise\unwrap([
+        'tourcoingsEvents' => getTourcoingEvents($client),
+        'roubaixEvents' => getRoubaixEvents($client)
+    ]);
 
-    $events = mergeEvents($tourcoingsEvents, $roubaixEvents);
-    // $events = $roubaixEvents;
+    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+
+    return $res->withJson($events);
+});
+
+/**
+ * Returns next 7 days events
+ */
+$app->get('/events/7days', function (Request $req, Response $res) {
+    $client = new Client();
+
+    $results = Promise\unwrap([
+        'tourcoingsEvents' => getTourcoingEvents($client),
+        'roubaixEvents' => getRoubaixEvents($client)
+    ]);
+
+    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    $events = filterNextEvents($events);
 
     return $res->withJson($events);
 });

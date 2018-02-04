@@ -2,6 +2,7 @@
     "require": {
         "slim/slim": "3.9.2",
         "guzzlehttp/guzzle": "6.3.0",
-        "palanik/corsslim": "dev-slim3"
+        "palanik/corsslim": "dev-slim3",
+        "fightbulc/moment": "^1.26"
     }
 }
