@@ -235,8 +235,11 @@ function filterNextEvents($events, $days = 7) {
     $nextEvents = [];
 
     for ($i = 0; $i < $days; $i += 1) {
+        $dayNumber = (int) $day->getWeekday();
+        $dayNumber = $dayNumber === 7 ? 0 : $dayNumber; // fix sunday number for js usage
+
         $nextEvents[] = [
-            'dayNumber' => (int) $day->getWeekday(),
+            'dayNumber' => $dayNumber,
             'dayName' => ucfirst($day->getWeekdayNameShort()),
             'events' => array_values(array_filter($events, function ($event) use ($day) {
                 // $day - $startEvent <= 0 AND $day - $endEvent >= 0
