@@ -95,7 +95,7 @@ function tourcoingEventsNormalizer($xmlEvents)
                 'url' => $locationNode->getElementsByTagName('link')[0]->nodeValue,
                 'area' => $locationNode->getElementsByTagName('area')[0]->nodeValue
             ],
-            'public' => [
+            'publics' => [
                 'type' => $publicNode->getElementsByTagName('type')[0]->nodeValue,
                 'label' => $publicNode->getElementsByTagName('label')[0]->nodeValue
             ],
@@ -139,7 +139,7 @@ function roubaixEventsNormalizer($jsonEvents)
                 'url' => $location['website'],
                 'area' => ''
             ],
-            'public' => [
+            'publics' => [
                 'type' => '',
                 'label' => ''
             ],
