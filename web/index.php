@@ -3,125 +3,304 @@
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \Psr\Http\Message\ResponseInterface as Response;
 
+use \GuzzleHttp\Promise;
+use \GuzzleHttp\Client;
+
 require '../vendor/autoload.php';
 
-const API_BASE = 'http://vlille.fr/stations/';
+const API_BASE_TOURCOING_RSS = 'https://agenda.tourcoing.fr/flux/rss/';
+const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.json?lang=fr';
+
+const MAX_DESCRIPTION_SIZE = 180;
+
+\Moment\Moment::setLocale('fr_FR');
+
+/**
+ * Crops text at MAX_DESCRIPTION_SIZE and adds '...' at the end
+ *
+ * @param [string] $text
+ * @return [string]
+ */
+function cropText($text) {
+    if (strlen($text) <= MAX_DESCRIPTION_SIZE) {
+        return $text;
+    }
+
+    return trim(substr($text, 0, MAX_DESCRIPTION_SIZE - 3)) . '...';
+}
+
+/**
+ * @see https://stackoverflow.com/a/7128879/5727772
+ *
+ * @param [string] $text
+ * @return [string]
+ */
+function clearText($text) {
+    return preg_replace('/\s+/', ' ', urldecode(html_entity_decode(strip_tags(str_replace(['<br/>', '<BR/>'], ' ', $text)))));
+}
 
 /**
  *
- * @param  String $xmlStationsString
+ * @param  String $xmlEvents
  * @return Array
  */
-function xmlStationsToJson($xmlStationsString)
+function tourcoingEventsNormalizer($xmlEvents)
 {
-    $stations = [];
-
-    // fix encode error
-    $xmlStationsString = preg_replace('/(<\?xml[^?]+?)utf-16/i', '$1utf-8', $xmlStationsString);
+    $events = [];
 
     $dom = new DOMDocument;
-    $dom->loadXML($xmlStationsString);
+    $dom->loadXML($xmlEvents);
 
-    // builds array of stations from markers nodes list
-    $markers = $dom->childNodes[0]->childNodes;
-    foreach ($markers as $marker) {
-        if ($marker->nodeType !== 1) {
-            continue;
+    // builds array of events from DOM
+    $eventNodes = $dom->getElementsByTagName('item');
+    foreach ($eventNodes as $eventNode) {
+        $locationNode = $eventNode->getElementsByTagName('location')[0];
+        $publicNode = $eventNode->getElementsByTagName('public')[0];
+        $rateNodes = $eventNode->getElementsByTagName('rate');
+
+        // build rates array
+        $ratesArray = [];
+        foreach ($rateNodes as $rateNode) {
+            $ratesArray[] = [
+                'label' => $rateNode->getElementsByTagName('label')[0]->nodeValue,
+                'type' => $rateNode->getElementsByTagName('type')[0]->nodeValue,
+                'amount' => $rateNode->getElementsByTagName('amount')[0]->nodeValue,
+                'condition' => $rateNode->getElementsByTagName('condition')[0]->nodeValue
+            ];
         }
 
-        // use standard names like 'latitude'
-        $stations[] = [
-            'id' => $marker->getAttribute('id'),
-            'name' => $marker->getAttribute('name'),
-            'latitude' => (float) $marker->getAttribute('lat'),
-            'longitude' => (float) $marker->getAttribute('lng')
+        // prepare descriptions
+        $longDescription = clearText($eventNode->getElementsByTagName('description')[0]->nodeValue);
+        $description = cropText($longDescription);
+
+        $startDate = explode('T', $eventNode->getElementsByTagName('date_start')[0]->nodeValue)[0];
+        $endDate = explode('T', $eventNode->getElementsByTagName('date_end')[0]->nodeValue)[0];
+
+        // build event object
+        $events[] = [
+            'title' => $eventNode->getElementsByTagName('title')[0]->nodeValue,
+            'description' => $description,
+            'longDescription' => $longDescription,
+            'url' => $eventNode->getElementsByTagName('link')[0]->nodeValue,
+            'image' => $eventNode->getElementsByTagName('enclosure')[0]->getAttribute('url'),
+            'category' => $eventNode->getElementsByTagName('category')[0]->nodeValue,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'location' => [
+                'latitude' => (float) $locationNode->getAttribute('latitude'),
+                'longitude' => (float) $locationNode->getAttribute('longitude'),
+                'name' => $locationNode->getElementsByTagName('name')[0]->nodeValue,
+                'address' => clearText($locationNode->getElementsByTagName('address')[0]->nodeValue),
+                'email' => $locationNode->getElementsByTagName('email')[0]->nodeValue,
+                'url' => $locationNode->getElementsByTagName('link')[0]->nodeValue,
+                'area' => $locationNode->getElementsByTagName('area')[0]->nodeValue
+            ],
+            'publics' => [
+                'type' => $publicNode->getElementsByTagName('type')[0]->nodeValue,
+                'label' => $publicNode->getElementsByTagName('label')[0]->nodeValue
+            ],
+            'rates' => $ratesArray,
+            'timings' => []
         ];
     }
 
-    return $stations;
+    return $events;
 }
 
 /**
+ * Undocumented function
  *
- * @param  String $xmlStationString
- * @return Array
+ * @param [type] $jsonEvents
+ * @return void
  */
-function xmlStationToJson($xmlStationString)
+function roubaixEventsNormalizer($jsonEvents)
 {
-    // fix encode error
-    $xmlStationString = preg_replace('/(<\?xml[^?]+?)utf-16/i', '$1utf-8', $xmlStationString);
+    $eventsArray = json_decode($jsonEvents, true)['events'];
 
-    $dom = new DOMDocument;
-    $dom->loadXML($xmlStationString);
+    $events = [];
+    foreach ($eventsArray as $event) {
+        $location = $event['location'];
+        $address = $location['address'] . ', ' . $location['postalCode'] . ' ' . $location['city'];
 
-    $stationElement = $dom->childNodes[0];
-
-    // use standard names and fix bad english tranlation...
-    $station = [
-        'address' => $stationElement->getElementsByTagName('adress')[0]->nodeValue,
-        'bikes' => (int) $stationElement->getElementsByTagName('bikes')[0]->nodeValue,
-        'docks' => (int) $stationElement->getElementsByTagName('attachs')[0]->nodeValue,
-        'payment' => $stationElement->getElementsByTagName('paiement')[0]->nodeValue,
-        'status' => $stationElement->getElementsByTagName('status')[0]->nodeValue,
-        'lastupd' => $stationElement->getElementsByTagName('lastupd')[0]->nodeValue
-    ];
-
-    // BUG FIX
-    // If no bike and no dock, the status shouldn't be "0"
-    if ($station['bikes'] === 0 && $station['docks'] === 0) {
-        $station['status'] = "418";
+        $events[] = [
+            'title' => $event['title']['fr'],
+            'description' => cropText(clearText($event['description']['fr'])),
+            'longDescription' => clearText($event['longDescription']['fr']),
+            'url' => $event['canonicalUrl'],
+            'image' => $event['thumbnail'],
+            'category' => '',
+            'startDate' => $event['firstDate'],
+            'endDate' => $event['lastDate'],
+            'location' => [
+                'latitude' => (float) $location['latitude'],
+                'longitude' => (float) $location['longitude'],
+                'name' => $location['name'],
+                'address' => $address,
+                'email' => '',
+                'url' => $location['website'],
+                'area' => ''
+            ],
+            'publics' => [
+                'type' => '',
+                'label' => ''
+            ],
+            'rates' => [],
+            'timings' => $event['timings']
+        ];
     }
 
-    return $station;
+    return $events;
 }
 
-$app = new \Slim\App;
+/**
+ * @see https://stackoverflow.com/a/2910637/5727772
+ *
+ * @param [type] $a
+ * @param [type] $b
+ * @return void
+ */
+function date_compare($a, $b, $sortOn = 'startDate', $order = 'ASC')
+{
+    $t1 = strtotime($a[$sortOn]);
+    $t2 = strtotime($b[$sortOn]);
+    return $order === 'ASC' ? $t1 - $t2 : $t2 - $t1;
+}
+
+/**
+ * Merge Roubaix and Tourcoing events arrays
+ *
+ * @param [type] $eventsA
+ * @param [type] $eventsB
+ * @return void
+ */
+function mergeEvents($eventsA, $eventsB) {
+    $events = array_merge($eventsA, $eventsB);
+
+    // order by ASC on startDate
+    usort($events, function ($a, $b) {
+        return date_compare($a, $b, 'startDate', 'ASC');
+    });
+
+    return $events;
+}
+
+/**
+ * Undocumented function
+ *
+ * @param [type] $client
+ * @return void
+ */
+function getTourcoingEvents($client) {
+    return $client
+        ->getAsync(API_BASE_TOURCOING_RSS, [
+            'headers' => [
+                'Accept' => 'application/rss+xml'
+            ]
+        ])
+        ->then(function ($response) {
+            $xmlEvents = $response->getBody()->getContents();
+
+            return tourcoingEventsNormalizer($xmlEvents);
+        });
+}
+
+/**
+ * Undocumented function
+ *
+ * @param [type] $client
+ * @return void
+ */
+function getRoubaixEvents($client)
+{
+    return $client
+        ->getAsync(API_BASE_ROUBAIX_JSON . '?offset=0&limit=100', [
+            'headers' => [
+                'Accept' => 'application/json'
+            ]
+        ])
+        ->then(function ($response) {
+            $jsonEvents = $response->getBody()->getContents();
+
+            return roubaixEventsNormalizer($jsonEvents);
+        });
+}
+
+/**
+ * Undocumented function
+ *
+ * @param [type] $events
+ * @param integer $days
+ * @return array
+ */
+function filterNextEvents($events, $days = 7) {
+    $day = new \Moment\Moment();
+    $nextEvents = [];
+
+    for ($i = 0; $i < $days; $i += 1) {
+        $dayNumber = (int) $day->getWeekday();
+        $dayNumber = $dayNumber === 7 ? 0 : $dayNumber; // fix sunday number for js usage
+
+        $nextEvents[] = [
+            'dayNumber' => $dayNumber,
+            'dayName' => ucfirst($day->getWeekdayNameShort()),
+            'events' => array_values(array_filter($events, function ($event) use ($day) {
+                // $day - $startEvent <= 0 AND $day - $endEvent >= 0
+                // meaning the event is started or starts today and isn't ending or ends today
+                return $day->from($event['startDate'])->getDays() <= 0 && $day->from($event['endDate'])->getDays() >= 0;
+            }))
+        ];
+
+        // next day
+        $day->addDays(1);
+    }
+
+    return $nextEvents;
+}
+
+/**
+ * Routing
+ */
+$container = new \Slim\Container([
+    'settings' => [
+        'displayErrorDetails' => true,
+    ],
+]);
+$app = new \Slim\App($container);
 
 // CORS
 $app->add(new \CorsSlim\CorsSlim());
 
 /**
- * Return all stations
+ * Returns all next events
  */
-$app->get('/stations', function (Request $req, Response $res) {
-    $client = new \GuzzleHttp\Client();
+$app->get('/events', function (Request $req, Response $res) {
+    $client = new Client();
 
-    $xmlStations = $client
-        ->get(API_BASE . '/xml-stations.aspx', [
-            'headers' => [
-                'Accept' => 'application/xml'
-            ]
-        ])
-        ->getBody()
-        ->getContents();
+    $results = Promise\unwrap([
+        'tourcoingsEvents' => getTourcoingEvents($client),
+        'roubaixEvents' => getRoubaixEvents($client)
+    ]);
 
-    $stations = xmlStationsToJson($xmlStations);
+    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
 
-    return $res->withJson($stations);
+    return $res->withJson($events);
 });
 
 /**
- * Return a station by `id`
+ * Returns next 7 days events
  */
-$app->get('/stations/{id}', function (Request $req, Response $res) {
-        $client = new \GuzzleHttp\Client();
+$app->get('/events/7days', function (Request $req, Response $res) {
+    $client = new Client();
 
-    $xmlStation = $client
-        ->get(API_BASE . '/xml-station.aspx', [
-            'query' => [
-                'borne' => $req->getAttribute('id')
-            ],
-            'headers' => [
-                'Accept' => 'application/xml'
-            ]
-        ])
-        ->getBody()
-        ->getContents();
+    $results = Promise\unwrap([
+        'tourcoingsEvents' => getTourcoingEvents($client),
+        'roubaixEvents' => getRoubaixEvents($client)
+    ]);
 
-    $station = xmlStationToJson($xmlStation);
+    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    $events = filterNextEvents($events);
 
-    return $res->withJson($station);
+    return $res->withJson($events);
 });
-
 
 $app->run();

@@ -1,0 +1,28 @@
+version: '3.3'
+
+services:
+  live-api-phpfpm:
+    container_name: live-api-phpfpm
+    restart: unless-stopped
+    image: php:7-fpm
+    volumes:
+      - ./:/usr/share/nginx/html
+    environment:
+      - DOCKUID=${UID} # UID define in .env
+      - DOCKGID=${UID} # UID define in .env
+
+  live-api-nginx:
+    container_name: live-api-nginx
+    restart: unless-stopped
+    image: nginx:latest
+    ports:
+      - 8080:80
+    depends_on:
+      - live-api-phpfpm
+    volumes:
+      - ./:/usr/share/nginx/html
+      - ./.logs/php-fpm:/usr/share/nginx/logs
+      - ./docker/api.vhost.conf:/etc/nginx/conf.d/default.conf
+    environment:
+      - DOCKUID=${UID} # UID define in .env
+      - DOCKGID=${UID} # UID define in .env
