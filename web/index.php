@@ -99,7 +99,8 @@ function tourcoingEventsNormalizer($xmlEvents)
                 'type' => $publicNode->getElementsByTagName('type')[0]->nodeValue,
                 'label' => $publicNode->getElementsByTagName('label')[0]->nodeValue
             ],
-            'rates' => $ratesArray
+            'rates' => $ratesArray,
+            'timings' => []
         ];
     }
 
@@ -143,7 +144,8 @@ function roubaixEventsNormalizer($jsonEvents)
                 'type' => '',
                 'label' => ''
             ],
-            'rates' => []
+            'rates' => [],
+            'timings' => $event['timings']
         ];
     }
 
