@@ -241,6 +241,7 @@ function filterNextEvents($events, $days = 7) {
         $dayNumber = $dayNumber === 7 ? 0 : $dayNumber; // fix sunday number for js usage
 
         $nextEvents[] = [
+            'date' => $day->format(),
             'dayNumber' => $dayNumber,
             'dayName' => ucfirst($day->getWeekdayNameShort()),
             'events' => array_values(array_filter($events, function ($event) use ($day) {
