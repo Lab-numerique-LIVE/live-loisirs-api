@@ -55,6 +55,10 @@ function tourcoingEventsNormalizer($xmlEvents)
     $eventNodes = $dom->getElementsByTagName('item');
     foreach ($eventNodes as $eventNode) {
         $locationNode = $eventNode->getElementsByTagName('location')[0];
+        if (!$locationNode) {
+            continue;
+        }
+
         $publicNode = $eventNode->getElementsByTagName('public')[0];
         $rateNodes = $eventNode->getElementsByTagName('rate');
 
@@ -120,6 +124,10 @@ function roubaixEventsNormalizer($jsonEvents)
     $events = [];
     foreach ($eventsArray as $event) {
         $location = $event['location'];
+        if (!$location) {
+            continue;
+        }
+
         $address = $location['address'] . ', ' . $location['postalCode'] . ' ' . $location['city'];
 
         $events[] = [
