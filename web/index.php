@@ -234,6 +234,22 @@ function getRoubaixEvents($client)
 /**
  * Undocumented function
  *
+ * @return array
+ */
+function getAllEvents() {
+    $client = new Client();
+
+    $results = Promise\unwrap([
+        'tourcoingsEvents' => getTourcoingEvents($client),
+        'roubaixEvents' => getRoubaixEvents($client)
+    ]);
+
+    return mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+}
+
+/**
+ * Undocumented function
+ *
  * @param [type] $events
  * @param integer $days
  * @return array
@@ -306,14 +322,7 @@ $app->add(new \CorsSlim\CorsSlim());
  * Returns all next events
  */
 $app->get('/events', function (Request $req, Response $res) {
-    $client = new Client();
-
-    $results = Promise\unwrap([
-        'tourcoingsEvents' => getTourcoingEvents($client),
-        'roubaixEvents' => getRoubaixEvents($client)
-    ]);
-
-    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    $events = getAllEvents();
 
     return $res->withJson($events);
 });
@@ -322,14 +331,7 @@ $app->get('/events', function (Request $req, Response $res) {
  * Returns next 7 days events
  */
 $app->get('/events/7days', function (Request $req, Response $res) {
-    $client = new Client();
-
-    $results = Promise\unwrap([
-        'tourcoingsEvents' => getTourcoingEvents($client),
-        'roubaixEvents' => getRoubaixEvents($client)
-    ]);
-
-    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    $events = getAllEvents();
     $events = filterNextEvents($events);
 
     return $res->withJson($events);
@@ -339,14 +341,7 @@ $app->get('/events/7days', function (Request $req, Response $res) {
  * Returns events in the next hour
  */
 $app->get('/events/now', function (Request $req, Response $res) {
-    $client = new Client();
-
-    $results = Promise\unwrap([
-        'tourcoingsEvents' => getTourcoingEvents($client),
-        'roubaixEvents' => getRoubaixEvents($client)
-    ]);
-
-    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    $events = getAllEvents();
     $events = filterInHourEvents($events);
 
     return $res->withJson($events);
