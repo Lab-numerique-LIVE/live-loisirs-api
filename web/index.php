@@ -246,7 +246,7 @@ function filterNextEvents($events, $days = 7) {
             'dayName' => ucfirst($day->getWeekdayNameShort()),
             'events' => array_values(array_filter($events, function ($event) use ($day) {
                 // $day - $startEvent <= 0 AND $day - $endEvent >= 0
-                // meaning the event is started or starts today and isn't ending or ends today
+                // meaning the event is started or starts today and isn't ended or ends today
                 return $day->from($event['startDate'])->getDays() <= 0 && $day->from($event['endDate'])->getDays() >= 0;
             }))
         ];
@@ -256,6 +256,31 @@ function filterNextEvents($events, $days = 7) {
     }
 
     return $nextEvents;
+}
+
+/**
+ * Undocumented function
+ *
+ * @param [type] $events
+ * @return void
+ */
+function filterInHourEvents($events) {
+    $day = new \Moment\Moment();
+
+    return array_values(array_filter($events, function ($event) use ($day) {
+        if (count($event['timings']) === 0) {
+            return false;
+        }
+
+        // we check is there is timing is the future today
+        $timings = array_filter($event['timings'], function ($timing) use ($day) {
+            $hoursDelta = $day->from($timing['start'])->getHours();
+
+            return $hoursDelta >= 0 && $hoursDelta <= 1;
+        });
+
+        return count($timings) > 0;
+    }));
 }
 
 /**
@@ -300,6 +325,24 @@ $app->get('/events/7days', function (Request $req, Response $res) {
 
     $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
     $events = filterNextEvents($events);
+
+    return $res->withJson($events);
+});
+
+/**
+ * Returns events in the next hour
+ */
+$app->get('/events/now', function (Request $req, Response $res) {
+    $client = new Client();
+
+    $results = Promise\unwrap([
+        // 'tourcoingsEvents' => getTourcoingEvents($client),
+        'roubaixEvents' => getRoubaixEvents($client)
+    ]);
+
+    // $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    $events = $results['roubaixEvents'];
+    $events = filterInHourEvents($events);
 
     return $res->withJson($events);
 });
