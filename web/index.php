@@ -189,7 +189,7 @@ function grandmixEventsNormalizer($jsonEvents)
             'description' => cropText(clearText($event['body'])),
             'longDescription' => clearText($event['body']),
             'url' => $event['url'],
-            'image' => $event['picture'],
+            'image' => str_replace('auto_1280', 'illustration_medium_crop', $event['picture']), // bug fix image url
             'category' => 'Concert',
             'startDate' => explode('T', $startDate)[0],
             'endDate' => explode('T', $endDate)[0],
