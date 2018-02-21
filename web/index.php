@@ -191,8 +191,8 @@ function grandmixEventsNormalizer($jsonEvents)
             'url' => $event['url'],
             'image' => $event['picture'],
             'category' => 'Concert',
-            'startDate' => $startDate,
-            'endDate' => $endDate,
+            'startDate' => explode('T', $startDate)[0],
+            'endDate' => explode('T', $endDate)[0],
             'location' => [
                 'latitude' => (float) $location['lat'],
                 'longitude' => (float) $location['long'],
@@ -207,7 +207,12 @@ function grandmixEventsNormalizer($jsonEvents)
                 'label' => ''
             ],
             'rates' => [],
-            'timings' => []
+            'timings' => [
+                [
+                    'start' => $startDate,
+                    'end' => $endDate
+                ]
+            ]
         ];
     }
 
@@ -367,7 +372,7 @@ function filterNextEvents($events, $days = 7) {
             'events' => array_values(array_filter($events, function ($event) use ($day) {
                 // $day - $startEvent <= 0 AND $day - $endEvent >= 0
                 // meaning the event is started or starts today and isn't ended or ends today
-                return $day->from($event['startDate'])->getDays() <= 0 && $day->from($event['endDate'])->getDays() >= 0;
+                return intval($day->from($event['startDate'])->getDays()) <= 0 && intval($day->from($event['endDate'])->getDays()) >= 0;
             }))
         ];
 
