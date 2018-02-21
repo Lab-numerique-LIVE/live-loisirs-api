@@ -201,6 +201,9 @@ function getTourcoingEvents($client) {
             $xmlEvents = $response->getBody()->getContents();
 
             return tourcoingEventsNormalizer($xmlEvents);
+        }, function ($reason) {
+            //TODO logging
+            return [];
         });
 }
 
@@ -222,6 +225,9 @@ function getRoubaixEvents($client)
             $jsonEvents = $response->getBody()->getContents();
 
             return roubaixEventsNormalizer($jsonEvents);
+        }, function ($reason) {
+            //TODO logging
+            return [];
         });
 }
 
@@ -336,12 +342,11 @@ $app->get('/events/now', function (Request $req, Response $res) {
     $client = new Client();
 
     $results = Promise\unwrap([
-        // 'tourcoingsEvents' => getTourcoingEvents($client),
+        'tourcoingsEvents' => getTourcoingEvents($client),
         'roubaixEvents' => getRoubaixEvents($client)
     ]);
 
-    // $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
-    $events = $results['roubaixEvents'];
+    $events = mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
     $events = filterInHourEvents($events);
 
     return $res->withJson($events);
