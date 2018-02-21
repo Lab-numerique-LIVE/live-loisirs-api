@@ -10,11 +10,13 @@ require '../vendor/autoload.php';
 
 const API_BASE_TOURCOING_RSS = 'https://agenda.tourcoing.fr/flux/rss/';
 const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.json?lang=fr';
+const API_BASE_GRANDMIX_JSON = 'https://legrandmix.com/fr/events-feed?json';
 
 const MAX_DESCRIPTION_SIZE = 180;
 
 const NOW_HOURS_DELTA = 5;
 
+setlocale(LC_TIME, "fr_FR");
 \Moment\Moment::setLocale('fr_FR');
 
 /**
@@ -163,6 +165,66 @@ function roubaixEventsNormalizer($jsonEvents)
 }
 
 /**
+ * Undocumented function
+ *
+ * @param [type] $jsonEvents
+ * @return void
+ */
+function grandmixEventsNormalizer($jsonEvents)
+{
+    $eventsArray = json_decode($jsonEvents, true)['events'];
+
+    $events = [];
+    foreach ($eventsArray as $event) {
+        $location = $event['geolocations'];
+        if (!$location) {
+            continue;
+        }
+
+        $startDate = parseGrandmixDate($event['date_start']);
+        $endDate = parseGrandmixDate($event['date_end']);
+
+        $events[] = [
+            'title' => $event['title'],
+            'description' => cropText(clearText($event['body'])),
+            'longDescription' => clearText($event['body']),
+            'url' => $event['url'],
+            'image' => $event['picture'],
+            'category' => 'Concert',
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'location' => [
+                'latitude' => (float) $location['lat'],
+                'longitude' => (float) $location['long'],
+                'name' => $location['label'] ? $location['label'] : "",
+                'address' => clearText($location['address']),
+                'email' => '',
+                'url' => '',
+                'area' => ''
+            ],
+            'publics' => [
+                'type' => '',
+                'label' => ''
+            ],
+            'rates' => [],
+            'timings' => []
+        ];
+    }
+
+    return $events;
+}
+
+function parseGrandmixDate($date) {
+    // fix day
+    $date = str_replace(['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'], ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], $date);
+
+    // fix month
+    $date = str_replace(['janv', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'], ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], $date);
+
+    return DateTime::createFromFormat('D d M H\Hi', $date)->format(DateTime::ISO8601);
+}
+
+/**
  * @see https://stackoverflow.com/a/2910637/5727772
  *
  * @param [type] $a
@@ -177,15 +239,12 @@ function date_compare($a, $b, $sortOn = 'startDate', $order = 'ASC')
 }
 
 /**
- * Merge Roubaix and Tourcoing events arrays
  *
- * @param [type] $eventsA
- * @param [type] $eventsB
- * @return void
+ *
+ * @param array $events
+ * @return array
  */
-function mergeEvents($eventsA, $eventsB) {
-    $events = array_merge($eventsA, $eventsB);
-
+function sortEvents($events) {
     // order by ASC on startDate
     usort($events, function ($a, $b) {
         return date_compare($a, $b, 'startDate', 'ASC');
@@ -195,10 +254,10 @@ function mergeEvents($eventsA, $eventsB) {
 }
 
 /**
- * Undocumented function
+ * Get Tourcoing events from RSS
  *
  * @param [type] $client
- * @return void
+ * @return Promise
  */
 function getTourcoingEvents($client) {
     return $client
@@ -218,10 +277,10 @@ function getTourcoingEvents($client) {
 }
 
 /**
- * Undocumented function
+ * Get Roubaix events from JSON
  *
  * @param [type] $client
- * @return void
+ * @return Promise
  */
 function getRoubaixEvents($client)
 {
@@ -242,7 +301,31 @@ function getRoubaixEvents($client)
 }
 
 /**
- * Undocumented function
+ * Get Le grand mix events from JSON
+ *
+ * @param [type] $client
+ * @return Promise
+ */
+function getGrandmixEvents($client)
+{
+    return $client
+        ->getAsync(API_BASE_GRANDMIX_JSON, [
+            'headers' => [
+                'Accept' => 'application/json'
+            ]
+        ])
+        ->then(function ($response) {
+            $jsonEvents = $response->getBody()->getContents();
+
+            return grandmixEventsNormalizer($jsonEvents);
+        }, function ($reason) {
+            //TODO logging
+            return [];
+        });
+}
+
+/**
+ * Get all events from various sources
  *
  * @return array
  */
@@ -251,16 +334,21 @@ function getAllEvents() {
 
     $results = Promise\unwrap([
         'tourcoingsEvents' => getTourcoingEvents($client),
-        'roubaixEvents' => getRoubaixEvents($client)
+        'roubaixEvents' => getRoubaixEvents($client),
+        'grandmixEvents' => getGrandmixEvents($client)
     ]);
 
-    return mergeEvents($results['tourcoingsEvents'], $results['roubaixEvents']);
+    return sortEvents(array_merge(
+        $results['tourcoingsEvents'],
+        $results['roubaixEvents'],
+        $results['grandmixEvents']
+    ));
 }
 
 /**
- * Undocumented function
+ * Filter next events according to $day parameter
  *
- * @param [type] $events
+ * @param array $events
  * @param integer $days
  * @return array
  */
@@ -291,9 +379,9 @@ function filterNextEvents($events, $days = 7) {
 }
 
 /**
- * Undocumented function
+ * Filter events in the next hour
  *
- * @param [type] $events
+ * @param array $events
  * @return void
  */
 function filterInHourEvents($events) {
