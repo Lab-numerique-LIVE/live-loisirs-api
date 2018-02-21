@@ -13,6 +13,8 @@ const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.jso
 
 const MAX_DESCRIPTION_SIZE = 180;
 
+const NOW_HOURS_DELTA = 5;
+
 \Moment\Moment::setLocale('fr_FR');
 
 /**
@@ -306,7 +308,7 @@ function filterInHourEvents($events) {
         $timings = array_filter($event['timings'], function ($timing) use ($day) {
             $hoursDelta = $day->from($timing['start'])->getHours();
 
-            return $hoursDelta >= 0 && $hoursDelta <= 1;
+            return $hoursDelta >= 0 && $hoursDelta <= NOW_HOURS_DELTA;
         });
 
         return count($timings) > 0;
