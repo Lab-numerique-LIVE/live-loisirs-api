@@ -19,6 +19,7 @@ const NOW_HOURS_DELTA = 5;
 setlocale(LC_TIME, "fr_FR");
 \Moment\Moment::setLocale('fr_FR');
 
+const DEBUG = true;
 /**
  * Crops text at MAX_DESCRIPTION_SIZE and adds '...' at the end
  *
@@ -221,12 +222,18 @@ function grandmixEventsNormalizer($jsonEvents)
 
 function parseGrandmixDate($date) {
     // fix day
-    $date = str_replace(['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'], ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], $date);
+    $date = str_replace(['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'], 
+                        ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], $date);
 
     // fix month
-    $date = str_replace(['janv', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'], ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], $date);
-
-    return DateTime::createFromFormat('D d M H\Hi', $date)->format(DateTime::ISO8601);
+    $date = str_replace(['janv', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'], 
+                        ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], $date);
+    $clean_date = DateTime::createFromFormat('D d M H\Hi', $date);
+    if (! is_bool($clean_date)) {
+        return $clean_date->format(DateTime::ISO8601);
+    } else {
+        return (new DateTime())->format(DateTime::ISO8601);
+    }
 }
 
 /**
@@ -277,6 +284,7 @@ function getTourcoingEvents($client) {
             return tourcoingEventsNormalizer($xmlEvents);
         }, function ($reason) {
             //TODO logging
+            log_error($reason);
             return [];
         });
 }
@@ -300,7 +308,7 @@ function getRoubaixEvents($client)
 
             return roubaixEventsNormalizer($jsonEvents);
         }, function ($reason) {
-            //TODO logging
+            log_error($reason);
             return [];
         });
 }
