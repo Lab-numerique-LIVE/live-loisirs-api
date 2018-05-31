@@ -20,6 +20,7 @@ export GREEN='\033[1;32m'
 export YELLOW='\033[1;33m'
 export BLUE='\033[1;34m'
 export NC='\033[0m' # No Color
+export OK="${GREEN}[ OK ]${NC}"
 
 ########################################
 # LOGGING
@@ -53,6 +54,7 @@ PWD=$(pwd)
 
 # FOLDERS
 PROJECT_ROOT="/var/www/loisirs-live-api.tourcoing.fr"
+NEEDED_FOLDERS="log"
 WEB_USER="loisirs-live"
 WEB_GROUP="www-data"
 
@@ -63,19 +65,23 @@ APACHE_CONF="loisirs-live-api-tourcoing-fr.conf"
 APACHE_AVAILABLE="${APACHE_AVAILABLE_PATH}/${APACHE_CONF}"
 APACHE_ENABLED="${APACHE_ENABLED_PATH}/020-${APACHE_CONF}"
 
+# Creates the needed folders
 function deploy_folders () {
     log_info "Deploy folders"
-    if [[ ! -d "${PROJECT_ROOT}/log" ]]; then
-        mkdir "${PROJECT_ROOT}/log"
-        chown -R ${WEB_USER}:${WEB_GROUP} "${PROJECT_ROOT}/log"
-        log_info "Directory *"${PROJECT_ROOT}/log"* created."
-    fi
-    log_info "Deploy folders  OK"
+    for folder in "${NEEDED_FOLDERS}"; do
+        if [[ ! -d "${PROJECT_ROOT}/${folder}" ]]; then
+            mkdir "${PROJECT_ROOT}/${folder}"
+            chown -R ${WEB_USER}:${WEB_GROUP} "${PROJECT_ROOT}/${folder}"
+            log_info "Directory *"${PROJECT_ROOT}/${folder}"* created."
+        fi
+    done;
+    log_info "Deploy folders ${OK}"
 }
+
 
 function deploy_build () {
     log_info "Deploy build"
-    log_info "Deploy build  OK"
+    log_info "Deploy build ${OK}"
 }
 
 function deploy_apache() {
@@ -90,7 +96,7 @@ function deploy_apache() {
     fi
     # Reload the apache server
     /bin/systemctl reload apache2.service
-    log_info "Deploy apache OK"
+    log_info "Deploy apache${OK}"
 }
 
 # Services settings
