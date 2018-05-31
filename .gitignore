@@ -3,3 +3,7 @@ make-release.sh
 .DS_Store
 .env
 .logs
+.vscode
+.idea
+
+
