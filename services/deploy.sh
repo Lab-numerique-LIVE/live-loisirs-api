@@ -52,7 +52,7 @@ function log_error {
 PWD=$(pwd)
 
 # FOLDERS
-PROJECT_ROOT="/var/www/loisirs-live.tourcoing.fr"
+PROJECT_ROOT="/var/www/loisirs-live-api.tourcoing.fr"
 WEB_USER="loisirs-live"
 WEB_GROUP="www-data"
 
