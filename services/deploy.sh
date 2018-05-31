@@ -64,18 +64,22 @@ APACHE_AVAILABLE="${APACHE_AVAILABLE_PATH}/${APACHE_CONF}"
 APACHE_ENABLED="${APACHE_ENABLED_PATH}/020-${APACHE_CONF}"
 
 function deploy_folders () {
+    log_info "Deploy folders"
     if [[ ! -d "${PROJECT_ROOT}/log" ]]; then
         mkdir "${PROJECT_ROOT}/log"
         chown -R ${WEB_USER}:${WEB_GROUP} "${PROJECT_ROOT}/log"
         log_info "Directory *"${PROJECT_ROOT}/log"* created."
     fi
+    log_info "Deploy folders  OK"
 }
 
-function deploy_build() {
-
+function deploy_build () {
+    log_info "Deploy build"
+    log_info "Deploy build  OK"
 }
 
 function deploy_apache() {
+    log_info "Deploy apache"
     cp "./apache/${APACHE_CONF}" ${APACHE_AVAILABLE}
     ln -s "${APACHE_AVAILABLE}"  "${APACHE_ENABLED}"
     SETTINGS_OK=$(/usr/sbin/apache2ctl configtest);
@@ -86,6 +90,7 @@ function deploy_apache() {
     fi
     # Reload the apache server
     /bin/systemctl reload apache2.service
+    log_info "Deploy apache OK"
 }
 
 # Services settings
