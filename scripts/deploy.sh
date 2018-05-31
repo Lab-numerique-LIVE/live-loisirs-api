@@ -57,7 +57,7 @@ APACHE_ENABLED="${APACHE_ENABLED_PATH}/020-${APACHE_CONF}"
 function deploy_apache() {
     cp "./apache/${APACHE_CONF}" ${APACHE_AVAILABLE}
     ln -s "${APACHE_AVAILABLE}"  "${APACHE_ENABLED}"
-    SETTINGS_OK=${/usr/sbin/apache2ctl configtest};
+    SETTINGS_OK=$(/usr/sbin/apache2ctl configtest);
     if [[ $? != 0 ]]; then
         log_error "Apache configtest has detected an configuration error: .conf file disabled"
         rm "${APACHE_ENABLED}"
