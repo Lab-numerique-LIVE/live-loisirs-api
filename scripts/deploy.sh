@@ -67,6 +67,10 @@ function deploy_apache() {
     /bin/systemctl reload apache2.service
 }
 
+# Services settings
+SERVICE="_ALL_"
+AVAILABLE_SERVICES="apache"
+
 # How to use the script !
 function usage {
     echo "$0 deploy services scripts for inscription-intranet application"
