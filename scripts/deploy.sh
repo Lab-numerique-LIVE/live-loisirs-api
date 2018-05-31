@@ -49,7 +49,6 @@ function log_error {
 }
 
 # PROJECT
-
 PWD=$(pwd)
 APACHE_CONF="loisirs-live-api-tourcoing-fr.conf"
 APACHE_AVAILABLE="${APACHE_AVAILABLE_PATH}/${APACHE_CONF}"
@@ -59,7 +58,7 @@ function deploy_apache() {
     cp "./apache/${APACHE_CONF}" ${APACHE_AVAILABLE}
     ln -s "${APACHE_AVAILABLE}"  "${APACHE_ENABLED}"
     SETTINGS_OK=${/usr/sbin/apache2ctl configtest};
-    if [[ $? != 0 ]]; then 
+    if [[ $? != 0 ]]; then
         log_error "Apache configtest has detected an configuration error: .conf file disabled"
         rm "${APACHE_ENABLED}"
         exit 1
@@ -68,3 +67,50 @@ function deploy_apache() {
     /bin/systemctl reload apache2.service
 }
 
+# How to use the script !
+function usage {
+    echo "$0 deploy services scripts for inscription-intranet application"
+    echo "Usage : $0 OPTIONS SERVICE_TYPE"
+    echo "    Where OPTIONS are:"
+    echo "        -h: Shows help message then exit"
+    echo "        -d: debug: shows all messages"
+    echo "        -s: service (default: _ALL_), available: ${SERVICE} ${AVAILABLE_SERVICES}"
+    exit 0
+}
+
+# main function
+function main {
+    while getopts "hds:" opt; do
+        case $opt in
+            h)
+                usage
+            ;;
+            d)
+                export LOGLEVEL=3
+            ;;
+            s)
+                SERVICE=${OPTARG}
+            ;;
+            \?)
+                echo "ERROR: invalid argument !"
+                usage
+            ;;
+        esac
+    done
+    
+    if [[ "${SERVICE}" = "_ALL_"  ]]; then
+        deploy_apache
+    else
+        case ${SERVICE} in
+            "apache")
+                deploy_apache
+            ;;
+            *)
+                usage
+                ::
+        esac
+    fi
+}
+
+# Main launcher
+main
