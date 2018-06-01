@@ -53,7 +53,7 @@ PWD=$(pwd)
 
 # FOLDERS
 WWW_PROJECT_ROOT="/var/www/loisirs-live-api.tourcoing.fr"
-NEEDED_FOLDERS="log"
+NEEDED_FOLDERS="log log/php"
 WEB_USER="loisirs-live"
 WEB_GROUP="www-data"
 
@@ -74,13 +74,11 @@ function deploy_folders () {
             log_info "Directory *"${WWW_PROJECT_ROOT}/${folder}"* created."
         fi
     done;
-    
-
-
+    log_info "Deploy folders ${OK}"
+}
 
 function deploy_build () {
     log_info "Deploy build"
-
     log_info "Deploy build ${OK}"
 }
 
