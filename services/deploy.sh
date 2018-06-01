@@ -30,7 +30,6 @@ export LEVEL_INFO=3
 export LEVEL_WARNING=2
 export LEVEL_ERROR=1
 
-
 export LOGLEVEL=${LEVEL_DEBUG}
 
 function log_debug {
@@ -53,7 +52,7 @@ function log_error {
 PWD=$(pwd)
 
 # FOLDERS
-PROJECT_ROOT="/var/www/loisirs-live-api.tourcoing.fr"
+WWW_PROJECT_ROOT="/var/www/loisirs-live-api.tourcoing.fr"
 NEEDED_FOLDERS="log"
 WEB_USER="loisirs-live"
 WEB_GROUP="www-data"
@@ -69,18 +68,19 @@ APACHE_ENABLED="${APACHE_ENABLED_PATH}/020-${APACHE_CONF}"
 function deploy_folders () {
     log_info "Deploy folders"
     for folder in "${NEEDED_FOLDERS}"; do
-        if [[ ! -d "${PROJECT_ROOT}/${folder}" ]]; then
-            mkdir "${PROJECT_ROOT}/${folder}"
-            chown -R ${WEB_USER}:${WEB_GROUP} "${PROJECT_ROOT}/${folder}"
-            log_info "Directory *"${PROJECT_ROOT}/${folder}"* created."
+        if [[ ! -d "${WWW_PROJECT_ROOT}/${folder}" ]]; then
+            mkdir "${WWW_PROJECT_ROOT}/${folder}"
+            chown -R ${WEB_USER}:${WEB_GROUP} "${WWW_PROJECT_ROOT}/${folder}"
+            log_info "Directory *"${WWW_PROJECT_ROOT}/${folder}"* created."
         fi
     done;
-    log_info "Deploy folders ${OK}"
-}
+    
+
 
 
 function deploy_build () {
     log_info "Deploy build"
+
     log_info "Deploy build ${OK}"
 }
 
