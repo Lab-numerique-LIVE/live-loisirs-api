@@ -67,7 +67,7 @@ APACHE_ENABLED="${APACHE_ENABLED_PATH}/020-${APACHE_CONF}"
 # Creates the needed folders
 function deploy_folders () {
     log_info "Deploy folders"
-    for folder in "${NEEDED_FOLDERS}"; do
+    for folder in ${NEEDED_FOLDERS}; do
         if [[ ! -d "${WWW_PROJECT_ROOT}/${folder}" ]]; then
             mkdir "${WWW_PROJECT_ROOT}/${folder}"
             chown -R ${WEB_USER}:${WEB_GROUP} "${WWW_PROJECT_ROOT}/${folder}"
