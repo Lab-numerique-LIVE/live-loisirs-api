@@ -1,25 +1,70 @@
 <?php
+// -*- Constants -*-
+$DEBUG = getenv("DEBUG_API");
 
+const API_SOURCES = [
+    'TOURCOING' => [
+        'source' => 'https://agenda.tourcoing.fr/flux/rss/', 
+        'type' => 'RSS', 
+        'enabled' => true
+    ], 
+    'MEL' => [
+        'source' => 'https://openagenda.com/agendas/89904399/events.json?lang=fr', 
+        'type' => 'OpenAgenda', 
+        'enabled' => false
+    ], 
+    'ROUBAIX' => [
+        'source' => 'https://openagenda.com/agendas/9977986/events.json?lang=fr', 
+        'type' => 'OpenAgenda', 
+        'enabled' => true
+    ],
+    'GRANDMIX' => [
+        'source' => 'https://legrandmix.com/fr/events-feed?json', 
+        'type' => 'GrandMix', 
+        'enabled' => true
+    ],
+];
+
+// URLs
+const MAX_DESCRIPTION_SIZE = 180;
+const NOW_HOURS_DELTA = 5;
+
+// -*- libs loading -*-
+// Logger
+use \Monolog\Logger;
+use \Monolog\Handler\StreamHandler;
+use \Monolog\Formatter\LineFormatter;
+
+// HTTP base requests/responses
 use \Psr\Http\Message\ServerRequestInterface as Request;
 use \Psr\Http\Message\ResponseInterface as Response;
-
+// HTTP Client for querying the remote services, through the Promise interface
 use \GuzzleHttp\Promise;
 use \GuzzleHttp\Client;
 
 require '../vendor/autoload.php';
 
-const API_BASE_TOURCOING_RSS = 'https://agenda.tourcoing.fr/flux/rss/';
-const API_BASE_ROUBAIX_JSON = 'https://openagenda.com/agendas/9977986/events.json?lang=fr';
-const API_BASE_GRANDMIX_JSON = 'https://legrandmix.com/fr/events-feed?json';
+// Initialize the logger
+$simpleLineFormat = "%channel%::%level_name% %message%\n";
+$lineFormat = "%timestamp% %channel%::%level_name% %message%\n";
+$logger = new Logger('loisirs-live-api');
 
-const MAX_DESCRIPTION_SIZE = 180;
+if ($DEBUG) {
+    $formatter = new LineFormatter($simpleLineFormat);
+    $streamHandler = new StreamHandler('php://stdout', Logger::DEBUG);
+    $streamHandler->setFormatter($formatter);
+    $logger->pushHandler($streamHandler);
+} else {
+    $formatter = new LineFormatter($lineFormat);
+    $streamHandler = new StreamHandler('/var/www/loisirs-live.tourcoing.fr/log/app.log', Logger::DEBUG);
+    $streamHandler->setFormatter($formatter);
+    $logger->pushHandler($streamHandler);
+}
 
-const NOW_HOURS_DELTA = 5;
-
-setlocale(LC_TIME, "fr_FR");
+// Locale definition
+setlocale(LC_TIME, 'fr_FR');
 \Moment\Moment::setLocale('fr_FR');
 
-const DEBUG = true;
 /**
  * Crops text at MAX_DESCRIPTION_SIZE and adds '...' at the end
  *
@@ -27,32 +72,53 @@ const DEBUG = true;
  * @return [string]
  */
 function cropText($text) {
+    global $logger;
+
     if (strlen($text) <= MAX_DESCRIPTION_SIZE) {
         return $text;
     }
-
-    return trim(substr($text, 0, MAX_DESCRIPTION_SIZE - 3)) . '...';
+    $cropedText =  trim(substr($text, 0, MAX_DESCRIPTION_SIZE - 3)) . '...';
+    return $cropedText;
 }
 
 /**
+ * Strips out HTML and Special Characters
  * @see https://stackoverflow.com/a/7128879/5727772
  *
- * @param [string] $text
- * @return [string]
+ * @param String $text
+ * @return String
  */
 function clearText($text) {
     return preg_replace('/\s+/', ' ', urldecode(html_entity_decode(strip_tags(str_replace(['<br/>', '<BR/>'], ' ', $text)))));
 }
 
 /**
- *
- * @param  String $xmlEvents
- * @return Array
+ * Gets the node element value
+ * 
+ * @param DOMElement $element
+ * @param String $name
+ * @return String Extracted node value
  */
-function tourcoingEventsNormalizer($xmlEvents)
-{
-    $events = [];
+function getNodeValueForName($element, $name) {
+    $output = '';
+    $extractedNode = $element->getElementsByTagName($name);
+    if (count($extractedNode) > 0) {
+        $output = $extractedNode[0]->nodeValue;
+    }
+    return $output;
+}
 
+/**
+ * Decodes and Normalize the events from RSS source
+ * 
+ * @param  String $xmlEvents Events as an XML string
+ * @return Array Array of formatted events
+ */
+function normalizeRSSEvents($xmlEvents) {
+    global $logger;
+    
+    $events = [];
+    
     $dom = new DOMDocument;
     $dom->loadXML($xmlEvents);
 
@@ -71,15 +137,15 @@ function tourcoingEventsNormalizer($xmlEvents)
         $ratesArray = [];
         foreach ($rateNodes as $rateNode) {
             $ratesArray[] = [
-                'label' => $rateNode->getElementsByTagName('label')[0]->nodeValue,
-                'type' => $rateNode->getElementsByTagName('type')[0]->nodeValue,
-                'amount' => $rateNode->getElementsByTagName('amount')[0]->nodeValue,
-                'condition' => $rateNode->getElementsByTagName('condition')[0]->nodeValue
+                'label' => getNodeValueForName($rateNode, 'label'),
+                'type' => getNodeValueForName($rateNode, 'type'),
+                'amount' => getNodeValueForName($rateNode, 'amount'),
+                'condition' => getNodeValueForName($rateNode, 'condition'),
             ];
         }
 
         // prepare descriptions
-        $longDescription = clearText($eventNode->getElementsByTagName('description')[0]->nodeValue);
+        $longDescription = clearText(getNodeValueForName($eventNode, 'description'));
         $description = cropText($longDescription);
 
         $startDate = explode('T', $eventNode->getElementsByTagName('date_start')[0]->nodeValue)[0];
@@ -87,43 +153,44 @@ function tourcoingEventsNormalizer($xmlEvents)
 
         // build event object
         $events[] = [
-            'title' => $eventNode->getElementsByTagName('title')[0]->nodeValue,
+            'title' => getNodeValueForName($eventNode, 'title'),
             'description' => $description,
             'longDescription' => $longDescription,
-            'url' => $eventNode->getElementsByTagName('link')[0]->nodeValue,
+            'url' => getNodeValueForName($eventNode, 'link'),
             'image' => $eventNode->getElementsByTagName('enclosure')[0]->getAttribute('url'),
-            'category' => $eventNode->getElementsByTagName('category')[0]->nodeValue,
+            'category' => getNodeValueForName($eventNode, 'category'),
             'startDate' => $startDate,
             'endDate' => $endDate,
             'location' => [
                 'latitude' => (float) $locationNode->getAttribute('latitude'),
                 'longitude' => (float) $locationNode->getAttribute('longitude'),
-                'name' => $locationNode->getElementsByTagName('name')[0]->nodeValue,
-                'address' => clearText($locationNode->getElementsByTagName('address')[0]->nodeValue),
-                'email' => $locationNode->getElementsByTagName('email')[0]->nodeValue,
-                'url' => $locationNode->getElementsByTagName('link')[0]->nodeValue,
-                'area' => $locationNode->getElementsByTagName('area')[0]->nodeValue
+                'name' => getNodeValueForName($locationNode, 'name'),
+                'address' => clearText(getNodeValueForName($locationNode, 'address')),
+                'email' => getNodeValueForName($locationNode, 'email'),
+                'url' => getNodeValueForName($locationNode, 'link'),
+                'area' => getNodeValueForName($locationNode, 'area'),
             ],
             'publics' => [
-                'type' => $publicNode->getElementsByTagName('type')[0]->nodeValue,
-                'label' => $publicNode->getElementsByTagName('label')[0]->nodeValue
+                'type' =>  getNodeValueForName($publicNode, 'type'),
+                'label' => getNodeValueForName($publicNode, 'label')
             ],
             'rates' => $ratesArray,
             'timings' => []
         ];
     }
 
+    $logger->addDebug('normalizeRSSEvents() $events = ' . json_encode($events, JSON_PRETTY_PRINT));
+
     return $events;
 }
 
 /**
- * Undocumented function
+ * Decodes and normalize events for OpenAgenda
  *
- * @param [type] $jsonEvents
- * @return void
+ * @param String $jsonEvents
+ * @return Array List on normalized events
  */
-function roubaixEventsNormalizer($jsonEvents)
-{
+function normalizeOpenAgendaEvents($jsonEvents) {
     $eventsArray = json_decode($jsonEvents, true)['events'];
 
     $events = [];
@@ -166,13 +233,12 @@ function roubaixEventsNormalizer($jsonEvents)
 }
 
 /**
- * Undocumented function
+ * Decodes and normalize events for GrandMix
  *
- * @param [type] $jsonEvents
- * @return void
+ * @param String $jsonEvents
+ * @return Array List on normalized events
  */
-function grandmixEventsNormalizer($jsonEvents)
-{
+function normalizeGrandMixEvents($jsonEvents) {
     $eventsArray = json_decode($jsonEvents, true)['events'];
 
     $events = [];
@@ -182,8 +248,8 @@ function grandmixEventsNormalizer($jsonEvents)
             continue;
         }
 
-        $startDate = parseGrandmixDate($event['date_start']);
-        $endDate = parseGrandmixDate($event['date_end']);
+        $startDate = parseGrandMixDate($event['date_start']);
+        $endDate = parseGrandMixDate($event['date_end']);
 
         $events[] = [
             'title' => $event['title'],
@@ -197,7 +263,7 @@ function grandmixEventsNormalizer($jsonEvents)
             'location' => [
                 'latitude' => (float) $location['lat'],
                 'longitude' => (float) $location['long'],
-                'name' => $location['label'] ? $location['label'] : "",
+                'name' => $location['label'] ? $location['label'] : '',
                 'address' => clearText($location['address']),
                 'email' => '',
                 'url' => '',
@@ -216,11 +282,10 @@ function grandmixEventsNormalizer($jsonEvents)
             ]
         ];
     }
-
     return $events;
 }
 
-function parseGrandmixDate($date) {
+function parseGrandMixDate($date) {
     // fix day
     $date = str_replace(['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'], 
                         ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], $date);
@@ -243,8 +308,7 @@ function parseGrandmixDate($date) {
  * @param [type] $b
  * @return void
  */
-function date_compare($a, $b, $sortOn = 'startDate', $order = 'ASC')
-{
+function compareDates($a, $b, $sortOn = 'startDate', $order = 'ASC') {
     $t1 = strtotime($a[$sortOn]);
     $t2 = strtotime($b[$sortOn]);
     return $order === 'ASC' ? $t1 - $t2 : $t2 - $t1;
@@ -259,7 +323,7 @@ function date_compare($a, $b, $sortOn = 'startDate', $order = 'ASC')
 function sortEvents($events) {
     // order by ASC on startDate
     usort($events, function ($a, $b) {
-        return date_compare($a, $b, 'startDate', 'ASC');
+        return compareDates($a, $b, 'startDate', 'ASC');
     });
 
     return $events;
@@ -272,16 +336,19 @@ function sortEvents($events) {
  * @return Promise
  */
 function getTourcoingEvents($client) {
-    return $client
-        ->getAsync(API_BASE_TOURCOING_RSS, [
-            'headers' => [
-                'Accept' => 'application/rss+xml'
-            ]
-        ])
-        ->then(function ($response) {
-            $xmlEvents = $response->getBody()->getContents();
+    global $logger;
+    $source= API_SOURCES['TOURCOING']['source'];
+    $logger->addDebug('getTourcoingEvents() $source = ' . $source);
 
-            return tourcoingEventsNormalizer($xmlEvents);
+    return $client
+        -> getAsync($source, [
+            HEADERS => [ 
+                ACCEPT => 'application/rss+xml'
+                ]
+        ])
+        -> then(function ($response) {
+            $xmlEvents = $response->getBody()->getContents();
+            return normalizeRSSEvents($xmlEvents);
         }, function ($reason) {
             //TODO logging
             log_error($reason);
@@ -297,16 +364,21 @@ function getTourcoingEvents($client) {
  */
 function getRoubaixEvents($client)
 {
+    global $logger;
+
+    $source= API_SOURCES['ROUBAIX']['source'];
+    $logger->addDebug('getRoubaixEvents() $source = ' . $source);
+
     return $client
-        ->getAsync(API_BASE_ROUBAIX_JSON . '?offset=0&limit=100', [
-            'headers' => [
-                'Accept' => 'application/json'
+        ->getAsync($source . '?offset=0&limit=100', [
+            HEADERS => [
+                ACCEPT => 'application/json'
             ]
         ])
         ->then(function ($response) {
             $jsonEvents = $response->getBody()->getContents();
 
-            return roubaixEventsNormalizer($jsonEvents);
+            return normalizeOpenAgendaEvents($jsonEvents);
         }, function ($reason) {
             log_error($reason);
             return [];
@@ -321,21 +393,30 @@ function getRoubaixEvents($client)
  */
 function getGrandmixEvents($client)
 {
+    global $logger;
+    $source = API_SOURCES['GRANDMIX']['source'];
+    $logger->addDebug('getGrandmixEvents() $source = ' . $source);
+
     return $client
-        ->getAsync(API_BASE_GRANDMIX_JSON, [
-            'headers' => [
-                'Accept' => 'application/json'
+        ->getAsync($source, [
+            HEADERS => [
+                ACCEPT => 'application/json'
             ]
         ])
         ->then(function ($response) {
             $jsonEvents = $response->getBody()->getContents();
-
-            return grandmixEventsNormalizer($jsonEvents);
+            return normalizeGrandMixEvents($jsonEvents);
         }, function ($reason) {
             //TODO logging
+            
             return [];
         });
 }
+
+const TOURCOING_EVENTS = 'tourcoingsEvents';
+const ROUBAIX_EVENTS = 'roubaixEvents';
+const GRANDMIX_EVENTS = 'grandmixEvents';
+
 
 /**
  * Get all events from various sources
@@ -343,27 +424,32 @@ function getGrandmixEvents($client)
  * @return array
  */
 function getAllEvents() {
+    global $logger;
     $client = new Client();
 
     $results = Promise\unwrap([
-        'tourcoingsEvents' => getTourcoingEvents($client),
-        'roubaixEvents' => getRoubaixEvents($client),
-        'grandmixEvents' => getGrandmixEvents($client)
+        TOURCOING_EVENTS => getTourcoingEvents($client),
+        ROUBAIX_EVENTS => getRoubaixEvents($client),
+        GRANDMIX_EVENTS => getGrandmixEvents($client)
     ]);
+    
+    $logger->addDebug("getAllEvents() tourcoingsEvents = " . json_encode($results[TOURCOING_EVENTS], JSON_PRETTY_PRINT));
+    $logger->addDebug("getAllEvents() roubaixEvents = " . json_encode($results[ROUBAIX_EVENTS], JSON_PRETTY_PRINT));
+    $logger->addDebug("getAllEvents() grandmixEvents = " . json_encode($results[GRANDMIX_EVENTS], JSON_PRETTY_PRINT));
 
     return sortEvents(array_merge(
-        $results['tourcoingsEvents'],
-        $results['roubaixEvents'],
-        $results['grandmixEvents']
+        $results[TOURCOING_EVENTS],
+        $results[ROUBAIX_EVENTS],
+        $results[GRANDMIX_EVENTS]
     ));
 }
 
 /**
- * Filter next events according to $day parameter
+ * Filters the next events according to $days parameter
  *
- * @param array $events
- * @param integer $days
- * @return array
+ * @param Array $events List of events
+ * @param Integer $days Count of days
+ * @return Array New events filtered
  */
 function filterNextEvents($events, $days = 7) {
     $day = new \Moment\Moment();
@@ -392,7 +478,7 @@ function filterNextEvents($events, $days = 7) {
 }
 
 /**
- * Filter events in the next hour
+ * Filters events in the next hour
  *
  * @param array $events
  * @return void
@@ -435,7 +521,7 @@ $app->add(new \CorsSlim\CorsSlim());
 $app->get('/events', function (Request $req, Response $res) {
     $events = getAllEvents();
 
-    return $res->withJson($events);
+    return $res->withJson($events, null, JSON_PARTIAL_OUTPUT_ON_ERROR);
 });
 
 /**
@@ -444,8 +530,7 @@ $app->get('/events', function (Request $req, Response $res) {
 $app->get('/events/7days', function (Request $req, Response $res) {
     $events = getAllEvents();
     $events = filterNextEvents($events);
-
-    return $res->withJson($events);
+    return $res->withJson($events, null, JSON_PARTIAL_OUTPUT_ON_ERROR);
 });
 
 /**
@@ -454,8 +539,7 @@ $app->get('/events/7days', function (Request $req, Response $res) {
 $app->get('/events/now', function (Request $req, Response $res) {
     $events = getAllEvents();
     $events = filterInHourEvents($events);
-
-    return $res->withJson($events);
+    return $res->withJson($events, null, JSON_PARTIAL_OUTPUT_ON_ERROR);
 });
 
 $app->run();
