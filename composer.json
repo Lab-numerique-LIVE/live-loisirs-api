@@ -4,6 +4,6 @@
         "guzzlehttp/guzzle": "6.3.0",
         "palanik/corsslim": "dev-slim3",
         "fightbulc/moment": "^1.26",
-        "monolog/monolog": "^1.23"
+        "monolog/monolog": "1.*"
     }
 }
