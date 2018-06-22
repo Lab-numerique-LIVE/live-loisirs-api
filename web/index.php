@@ -1,29 +1,7 @@
 <?php
 // -*- Constants -*-
-$DEBUG = getenv("DEBUG_API");
-
-const API_SOURCES = [
-    'TOURCOING' => [
-        'source' => 'https://agenda.tourcoing.fr/flux/rss/', 
-        'type' => 'RSS', 
-        'enabled' => true
-    ], 
-    'MEL' => [
-        'source' => 'https://openagenda.com/agendas/89904399/events.json?lang=fr', 
-        'type' => 'OpenAgenda', 
-        'enabled' => false
-    ], 
-    'ROUBAIX' => [
-        'source' => 'https://openagenda.com/agendas/9977986/events.json?lang=fr', 
-        'type' => 'OpenAgenda', 
-        'enabled' => true
-    ],
-    'GRANDMIX' => [
-        'source' => 'https://legrandmix.com/fr/events-feed?json', 
-        'type' => 'GrandMix', 
-        'enabled' => true
-    ],
-];
+// $DEBUG = getenv("DEBUG_API");
+$DEBUG = true;
 
 // URLs
 const MAX_DESCRIPTION_SIZE = 180;
@@ -42,6 +20,7 @@ use \Psr\Http\Message\ResponseInterface as Response;
 use \GuzzleHttp\Promise;
 use \GuzzleHttp\Client;
 
+// Loads compozer stuff 
 require '../vendor/autoload.php';
 
 // Initialize the logger
@@ -56,10 +35,42 @@ if ($DEBUG) {
     $logger->pushHandler($streamHandler);
 } else {
     $formatter = new LineFormatter($lineFormat);
-    $streamHandler = new StreamHandler('/var/www/loisirs-live.tourcoing.fr/log/app.log', Logger::DEBUG);
+    $streamHandler = new StreamHandler('/var/www/loisirs-live.tourcoing.fr/log/app.log', Logger::WARNING);
     $streamHandler->setFormatter($formatter);
     $logger->pushHandler($streamHandler);
 }
+
+// Sources
+const API_SOURCES = [
+    'TOURCOING' => [
+        'source' => 'https://agenda.tourcoing.fr/flux/rss/', 
+        'type' => 'RSS', 
+        'enabled' => true,
+        'function' => 'normalizeRSSEvents',
+        'headers' => ['Accept' => 'application/rss+xml']
+    ], 
+    'MEL' => [
+        'source' => 'https://openagenda.com/agendas/89904399/events.json?lang=fr&offset=0&limit=100', 
+        'type' => 'OpenAgenda', 
+        'enabled' => false,
+        'function' => 'normalizeAgendaEvents',
+        'headers' => ['Accept' => 'application/json']
+    ], 
+    'ROUBAIX' => [
+        'source' => 'https://openagenda.com/agendas/9977986/events.json?lang=fr&offset=0&limit=100', 
+        'type' => 'OpenAgenda', 
+        'enabled' => true,
+        'function' => 'normalizeOpenAgendaEvents',
+        'headers' => ['Accept' => 'application/json']
+    ],
+    'GRANDMIX' => [
+        'source' => 'https://legrandmix.com/fr/events-feed?json', 
+        'type' => 'GrandMix', 
+        'enabled' => true, 
+        'function' => 'normalizeGrandmixEvents',
+        'headers' => ['Accept' => 'application/json']
+    ],
+];
 
 // Locale definition
 setlocale(LC_TIME, 'fr_FR');
@@ -111,16 +122,16 @@ function getNodeValueForName($element, $name) {
 /**
  * Decodes and Normalize the events from RSS source
  * 
- * @param  String $xmlEvents Events as an XML string
+ * @param  String $eventsStream Events as an XML string
  * @return Array Array of formatted events
  */
-function normalizeRSSEvents($xmlEvents) {
+function normalizeRSSEvents($eventsStream) {
     global $logger;
     
     $events = [];
     
     $dom = new DOMDocument;
-    $dom->loadXML($xmlEvents);
+    $dom->loadXML($eventsStream);
 
     // builds array of events from DOM
     $eventNodes = $dom->getElementsByTagName('item');
@@ -178,20 +189,18 @@ function normalizeRSSEvents($xmlEvents) {
             'timings' => []
         ];
     }
-
     $logger->addDebug('normalizeRSSEvents() $events = ' . json_encode($events, JSON_PRETTY_PRINT));
-
     return $events;
 }
 
 /**
  * Decodes and normalize events for OpenAgenda
  *
- * @param String $jsonEvents
+ * @param String $eventsStream
  * @return Array List on normalized events
  */
-function normalizeOpenAgendaEvents($jsonEvents) {
-    $eventsArray = json_decode($jsonEvents, true)['events'];
+function normalizeOpenAgendaEvents($eventsStream) {
+    $eventsArray = json_decode($eventsStream, true)['events'];
 
     $events = [];
     foreach ($eventsArray as $event) {
@@ -235,11 +244,11 @@ function normalizeOpenAgendaEvents($jsonEvents) {
 /**
  * Decodes and normalize events for GrandMix
  *
- * @param String $jsonEvents
+ * @param String $eventsStream
  * @return Array List on normalized events
  */
-function normalizeGrandMixEvents($jsonEvents) {
-    $eventsArray = json_decode($jsonEvents, true)['events'];
+function normalizeGrandMixEvents($eventsStream) {
+    $eventsArray = json_decode($eventsStream, true)['events'];
 
     $events = [];
     foreach ($eventsArray as $event) {
@@ -330,118 +339,52 @@ function sortEvents($events) {
 }
 
 /**
- * Get Tourcoing events from RSS
+ * Get all events from various sources, according to `API_SOURCES`
  *
- * @param [type] $client
- * @return Promise
- */
-function getTourcoingEvents($client) {
-    global $logger;
-    $source= API_SOURCES['TOURCOING']['source'];
-    $logger->addDebug('getTourcoingEvents() $source = ' . $source);
-
-    return $client
-        -> getAsync($source, [
-            HEADERS => [ 
-                ACCEPT => 'application/rss+xml'
-                ]
-        ])
-        -> then(function ($response) {
-            $xmlEvents = $response->getBody()->getContents();
-            return normalizeRSSEvents($xmlEvents);
-        }, function ($reason) {
-            //TODO logging
-            log_error($reason);
-            return [];
-        });
-}
-
-/**
- * Get Roubaix events from JSON
- *
- * @param [type] $client
- * @return Promise
- */
-function getRoubaixEvents($client)
-{
-    global $logger;
-
-    $source= API_SOURCES['ROUBAIX']['source'];
-    $logger->addDebug('getRoubaixEvents() $source = ' . $source);
-
-    return $client
-        ->getAsync($source . '?offset=0&limit=100', [
-            HEADERS => [
-                ACCEPT => 'application/json'
-            ]
-        ])
-        ->then(function ($response) {
-            $jsonEvents = $response->getBody()->getContents();
-
-            return normalizeOpenAgendaEvents($jsonEvents);
-        }, function ($reason) {
-            log_error($reason);
-            return [];
-        });
-}
-
-/**
- * Get Le grand mix events from JSON
- *
- * @param [type] $client
- * @return Promise
- */
-function getGrandmixEvents($client)
-{
-    global $logger;
-    $source = API_SOURCES['GRANDMIX']['source'];
-    $logger->addDebug('getGrandmixEvents() $source = ' . $source);
-
-    return $client
-        ->getAsync($source, [
-            HEADERS => [
-                ACCEPT => 'application/json'
-            ]
-        ])
-        ->then(function ($response) {
-            $jsonEvents = $response->getBody()->getContents();
-            return normalizeGrandMixEvents($jsonEvents);
-        }, function ($reason) {
-            //TODO logging
-            
-            return [];
-        });
-}
-
-const TOURCOING_EVENTS = 'tourcoingsEvents';
-const ROUBAIX_EVENTS = 'roubaixEvents';
-const GRANDMIX_EVENTS = 'grandmixEvents';
-
-
-/**
- * Get all events from various sources
- *
- * @return array
+ * @return Array ordered events from enabled sources
  */
 function getAllEvents() {
     global $logger;
     $client = new Client();
 
-    $results = Promise\unwrap([
-        TOURCOING_EVENTS => getTourcoingEvents($client),
-        ROUBAIX_EVENTS => getRoubaixEvents($client),
-        GRANDMIX_EVENTS => getGrandmixEvents($client)
-    ]);
-    
-    $logger->addDebug("getAllEvents() tourcoingsEvents = " . json_encode($results[TOURCOING_EVENTS], JSON_PRETTY_PRINT));
-    $logger->addDebug("getAllEvents() roubaixEvents = " . json_encode($results[ROUBAIX_EVENTS], JSON_PRETTY_PRINT));
-    $logger->addDebug("getAllEvents() grandmixEvents = " . json_encode($results[GRANDMIX_EVENTS], JSON_PRETTY_PRINT));
+    $results = [];
 
-    return sortEvents(array_merge(
-        $results[TOURCOING_EVENTS],
-        $results[ROUBAIX_EVENTS],
-        $results[GRANDMIX_EVENTS]
-    ));
+    foreach(API_SOURCES as $key => $value) {
+        if ($value['enabled'] === false) {
+            $logger->addInfo("getAllEvents() Does not get data for source $key: disabled.");
+            continue;
+        }
+        $logger->addDebug("getAllEvents() $function will be called for $key");
+        $results += [$key => $client
+                                ->getAsync($value['source'], $value['headers'])
+                                ->then(
+                                    function($response) use ($key, $value){
+                                        global $logger;
+                                        $content = $response->getBody()->getContents();
+                                        $logger -> addDebug("getAllEvents::then($key) strlen(\$content) = " . strlen($content));
+                                        $_results = $value['function']($content);
+                                        $logger -> addDebug("getAllEvents::then($key) count(\$local_results) = " . count($_results));
+                                        return $_results;
+                                    }, 
+                                    function($reason) use ($key, $value){
+                                        global $logger;
+                                        // global $key, $value;
+                                        $logger->addError('getAllEvents::then(' . $key . ') Error while getting data: ' . $reason);
+                                        return [];
+                                    })];
+    }
+    $logger->addDebug('getAllEvents() $results = ' . json_encode($results, JSON_PRETTY_PRINT));
+
+    $all_results = Promise\unwrap($results);
+
+    // Merges the results in a single array
+    $merged = [];
+    foreach($all_results as $key => $value) {
+        $merged = array_merge($merged, $value);
+    }
+
+    // Sorts results 
+    return sortEvents($merged);
 }
 
 /**
