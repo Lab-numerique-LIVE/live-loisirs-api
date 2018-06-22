@@ -72,15 +72,15 @@ const API_SOURCES = [
     ],
 ];
 
-// Locale definition
+// Locale / timezone definition
 setlocale(LC_TIME, 'fr_FR');
 \Moment\Moment::setLocale('fr_FR');
 
 /**
  * Crops text at MAX_DESCRIPTION_SIZE and adds '...' at the end
  *
- * @param [string] $text
- * @return [string]
+ * @param String $text Text to crop
+ * @return String Croped string
  */
 function cropText($text)
 {
@@ -95,10 +95,11 @@ function cropText($text)
 
 /**
  * Strips out HTML and Special Characters
+ *
  * @see https://stackoverflow.com/a/7128879/5727772
  *
- * @param String $text
- * @return String
+ * @param String $text Text to strip
+ * @return String Striped text
  */
 function clearText($text)
 {
@@ -204,6 +205,7 @@ function normalizeRSSEvents($eventsStream)
  */
 function normalizeOpenAgendaEvents($eventsStream)
 {
+    global $logger;
     $eventsArray = json_decode($eventsStream, true)['events'];
 
     $events = [];
@@ -214,7 +216,7 @@ function normalizeOpenAgendaEvents($eventsStream)
         }
 
         $address = $location['address'] . ', ' . $location['postalCode'] . ' ' . $location['city'];
-
+        $logger->addDebug("normalizeOpenAgendaEvents() timings = " . json_encode($event['timings'], JSON_PRETTY_PRINT));
         $events[] = [
             'title' => $event['title']['fr'],
             'description' => cropText(clearText($event['description']['fr'])),
