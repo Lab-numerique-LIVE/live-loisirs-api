@@ -9,18 +9,18 @@ const NOW_HOURS_DELTA = 5;
 
 // -*- libs loading -*-
 // Logger
-use \Monolog\Logger;
-use \Monolog\Handler\StreamHandler;
+use \GuzzleHttp\Client;
+use \GuzzleHttp\Promise;
 use \Monolog\Formatter\LineFormatter;
 
 // HTTP base requests/responses
-use \Psr\Http\Message\ServerRequestInterface as Request;
-use \Psr\Http\Message\ResponseInterface as Response;
+use \Monolog\Handler\StreamHandler;
+use \Monolog\Logger;
 // HTTP Client for querying the remote services, through the Promise interface
-use \GuzzleHttp\Promise;
-use \GuzzleHttp\Client;
+use \Psr\Http\Message\ResponseInterface as Response;
+use \Psr\Http\Message\ServerRequestInterface as Request;
 
-// Loads compozer stuff 
+// Loads compozer stuff
 require '../vendor/autoload.php';
 
 // Initialize the logger
@@ -43,32 +43,32 @@ if ($DEBUG) {
 // Sources
 const API_SOURCES = [
     'TOURCOING' => [
-        'source' => 'https://agenda.tourcoing.fr/flux/rss/', 
-        'type' => 'RSS', 
+        'source' => 'https://agenda.tourcoing.fr/flux/rss/',
+        'type' => 'RSS',
         'enabled' => true,
         'function' => 'normalizeRSSEvents',
-        'headers' => ['Accept' => 'application/rss+xml']
-    ], 
+        'headers' => ['Accept' => 'application/rss+xml'],
+    ],
     'MEL' => [
-        'source' => 'https://openagenda.com/agendas/89904399/events.json?lang=fr&offset=0&limit=100', 
-        'type' => 'OpenAgenda', 
+        'source' => 'https://openagenda.com/agendas/89904399/events.json?lang=fr&offset=0&limit=100',
+        'type' => 'OpenAgenda',
         'enabled' => false,
         'function' => 'normalizeAgendaEvents',
-        'headers' => ['Accept' => 'application/json']
-    ], 
+        'headers' => ['Accept' => 'application/json'],
+    ],
     'ROUBAIX' => [
-        'source' => 'https://openagenda.com/agendas/9977986/events.json?lang=fr&offset=0&limit=100', 
-        'type' => 'OpenAgenda', 
+        'source' => 'https://openagenda.com/agendas/9977986/events.json?lang=fr&offset=0&limit=100',
+        'type' => 'OpenAgenda',
         'enabled' => true,
         'function' => 'normalizeOpenAgendaEvents',
-        'headers' => ['Accept' => 'application/json']
+        'headers' => ['Accept' => 'application/json'],
     ],
     'GRANDMIX' => [
-        'source' => 'https://legrandmix.com/fr/events-feed?json', 
-        'type' => 'GrandMix', 
-        'enabled' => true, 
+        'source' => 'https://legrandmix.com/fr/events-feed?json',
+        'type' => 'GrandMix',
+        'enabled' => true,
         'function' => 'normalizeGrandmixEvents',
-        'headers' => ['Accept' => 'application/json']
+        'headers' => ['Accept' => 'application/json'],
     ],
 ];
 
@@ -82,13 +82,14 @@ setlocale(LC_TIME, 'fr_FR');
  * @param [string] $text
  * @return [string]
  */
-function cropText($text) {
+function cropText($text)
+{
     global $logger;
 
     if (strlen($text) <= MAX_DESCRIPTION_SIZE) {
         return $text;
     }
-    $cropedText =  trim(substr($text, 0, MAX_DESCRIPTION_SIZE - 3)) . '...';
+    $cropedText = trim(substr($text, 0, MAX_DESCRIPTION_SIZE - 3)) . '...';
     return $cropedText;
 }
 
@@ -99,18 +100,20 @@ function cropText($text) {
  * @param String $text
  * @return String
  */
-function clearText($text) {
+function clearText($text)
+{
     return preg_replace('/\s+/', ' ', urldecode(html_entity_decode(strip_tags(str_replace(['<br/>', '<BR/>'], ' ', $text)))));
 }
 
 /**
  * Gets the node element value
- * 
+ *
  * @param DOMElement $element
  * @param String $name
  * @return String Extracted node value
  */
-function getNodeValueForName($element, $name) {
+function getNodeValueForName($element, $name)
+{
     $output = '';
     $extractedNode = $element->getElementsByTagName($name);
     if (count($extractedNode) > 0) {
@@ -121,15 +124,16 @@ function getNodeValueForName($element, $name) {
 
 /**
  * Decodes and Normalize the events from RSS source
- * 
+ *
  * @param  String $eventsStream Events as an XML string
  * @return Array Array of formatted events
  */
-function normalizeRSSEvents($eventsStream) {
+function normalizeRSSEvents($eventsStream)
+{
     global $logger;
-    
+
     $events = [];
-    
+
     $dom = new DOMDocument;
     $dom->loadXML($eventsStream);
 
@@ -182,14 +186,13 @@ function normalizeRSSEvents($eventsStream) {
                 'area' => getNodeValueForName($locationNode, 'area'),
             ],
             'publics' => [
-                'type' =>  getNodeValueForName($publicNode, 'type'),
-                'label' => getNodeValueForName($publicNode, 'label')
+                'type' => getNodeValueForName($publicNode, 'type'),
+                'label' => getNodeValueForName($publicNode, 'label'),
             ],
             'rates' => $ratesArray,
-            'timings' => []
+            'timings' => [],
         ];
     }
-    $logger->addDebug('normalizeRSSEvents() $events = ' . json_encode($events, JSON_PRETTY_PRINT));
     return $events;
 }
 
@@ -199,7 +202,8 @@ function normalizeRSSEvents($eventsStream) {
  * @param String $eventsStream
  * @return Array List on normalized events
  */
-function normalizeOpenAgendaEvents($eventsStream) {
+function normalizeOpenAgendaEvents($eventsStream)
+{
     $eventsArray = json_decode($eventsStream, true)['events'];
 
     $events = [];
@@ -227,14 +231,14 @@ function normalizeOpenAgendaEvents($eventsStream) {
                 'address' => $address,
                 'email' => '',
                 'url' => $location['website'],
-                'area' => ''
+                'area' => '',
             ],
             'publics' => [
                 'type' => '',
-                'label' => ''
+                'label' => '',
             ],
             'rates' => [],
-            'timings' => $event['timings']
+            'timings' => $event['timings'],
         ];
     }
 
@@ -247,7 +251,8 @@ function normalizeOpenAgendaEvents($eventsStream) {
  * @param String $eventsStream
  * @return Array List on normalized events
  */
-function normalizeGrandMixEvents($eventsStream) {
+function normalizeGrandMixEvents($eventsStream)
+{
     $eventsArray = json_decode($eventsStream, true)['events'];
 
     $events = [];
@@ -276,37 +281,56 @@ function normalizeGrandMixEvents($eventsStream) {
                 'address' => clearText($location['address']),
                 'email' => '',
                 'url' => '',
-                'area' => ''
+                'area' => '',
             ],
             'publics' => [
                 'type' => '',
-                'label' => ''
+                'label' => '',
             ],
             'rates' => [],
             'timings' => [
                 [
                     'start' => $startDate,
-                    'end' => $endDate
-                ]
-            ]
+                    'end' => $endDate,
+                ],
+            ],
         ];
     }
     return $events;
 }
 
-function parseGrandMixDate($date) {
+function parseGrandMixDate($date)
+{
+    global $logger;
+
+    $logger->addDebug("parseGrandMixDate($date)");
+
     // fix day
-    $date = str_replace(['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'], 
-                        ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], $date);
+    $date = str_replace(['lun. ', 'mar. ', 'mer. ', 'jeu. ', 'ven. ', 'sam. ', 'dim. '],
+        ['', '', '', '', '', '', ''], $date);
 
     // fix month
-    $date = str_replace(['janv', 'fév', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'], 
-                        ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], $date);
-    $clean_date = DateTime::createFromFormat('D d M H\Hi', $date);
-    if (! is_bool($clean_date)) {
-        return $clean_date->format(DateTime::ISO8601);
+    $date = str_replace(['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
+        ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'], $date);
+
+    $logger->addDebug("parseGrandMixDate($date)");
+    $parsed_date = false;
+    if (strlen($date) === 10 || strlen($date) === 11) {
+        $parsed_date = DateTime::createFromFormat('d m H\Hi', $date);
     } else {
-        return (new DateTime())->format(DateTime::ISO8601);
+        $parsed_date = DateTime::createFromFormat('d m Y H\Hi', $date);
+    }
+
+    if (!is_bool($parsed_date)) {
+        $_date = $parsed_date->format(DateTime::ISO8601);
+        $logger->addDebug("parseGrandMixDate($date) new date = $_date");
+        return $_date;
+    } else {
+        $errors = DateTime::getLastErrors();
+        $logger->addWarning("parseGrandMixDate($date) Unable to parse date : " . json_encode($errors, JSON_PRETTY_PRINT));
+        $_date = (new DateTime())->format(DateTime::ISO8601);
+        $logger->addDebug("parseGrandMixDate($date) BUGGY new date = $_date");
+        return $_date;
     }
 }
 
@@ -317,7 +341,8 @@ function parseGrandMixDate($date) {
  * @param [type] $b
  * @return void
  */
-function compareDates($a, $b, $sortOn = 'startDate', $order = 'ASC') {
+function compareDates($a, $b, $sortOn = 'startDate', $order = 'ASC')
+{
     $t1 = strtotime($a[$sortOn]);
     $t2 = strtotime($b[$sortOn]);
     return $order === 'ASC' ? $t1 - $t2 : $t2 - $t1;
@@ -329,7 +354,8 @@ function compareDates($a, $b, $sortOn = 'startDate', $order = 'ASC') {
  * @param array $events
  * @return array
  */
-function sortEvents($events) {
+function sortEvents($events)
+{
     // order by ASC on startDate
     usort($events, function ($a, $b) {
         return compareDates($a, $b, 'startDate', 'ASC');
@@ -343,47 +369,46 @@ function sortEvents($events) {
  *
  * @return Array ordered events from enabled sources
  */
-function getAllEvents() {
+function getAllEvents()
+{
     global $logger;
     $client = new Client();
 
     $results = [];
 
-    foreach(API_SOURCES as $key => $value) {
+    foreach (API_SOURCES as $key => $value) {
         if ($value['enabled'] === false) {
             $logger->addInfo("getAllEvents() Does not get data for source $key: disabled.");
             continue;
         }
-        $logger->addDebug("getAllEvents() $function will be called for $key");
+        // Adds the results
         $results += [$key => $client
-                                ->getAsync($value['source'], $value['headers'])
-                                ->then(
-                                    function($response) use ($key, $value){
-                                        global $logger;
-                                        $content = $response->getBody()->getContents();
-                                        $logger -> addDebug("getAllEvents::then($key) strlen(\$content) = " . strlen($content));
-                                        $_results = $value['function']($content);
-                                        $logger -> addDebug("getAllEvents::then($key) count(\$local_results) = " . count($_results));
-                                        return $_results;
-                                    }, 
-                                    function($reason) use ($key, $value){
-                                        global $logger;
-                                        // global $key, $value;
-                                        $logger->addError('getAllEvents::then(' . $key . ') Error while getting data: ' . $reason);
-                                        return [];
-                                    })];
+                ->getAsync($value['source'], $value['headers'])
+                ->then(
+                    function ($response) use ($key, $value) {
+                        global $logger;
+                        $content = $response->getBody()->getContents();
+                        $logger->addDebug("getAllEvents::then($key) strlen(\$content) = " . strlen($content));
+                        $_results = $value['function']($content);
+                        $logger->addDebug("getAllEvents::then($key) count(\$local_results) = " . count($_results));
+                        return $_results;
+                    },
+                    function ($reason) use ($key, $value) {
+                        global $logger;
+                        // global $key, $value;
+                        $logger->addError('getAllEvents::then(' . $key . ') Error while getting data: ' . $reason);
+                        return [];
+                    })];
     }
-    $logger->addDebug('getAllEvents() $results = ' . json_encode($results, JSON_PRETTY_PRINT));
-
     $all_results = Promise\unwrap($results);
 
     // Merges the results in a single array
     $merged = [];
-    foreach($all_results as $key => $value) {
+    foreach ($all_results as $key => $value) {
         $merged = array_merge($merged, $value);
     }
 
-    // Sorts results 
+    // Sorts results
     return sortEvents($merged);
 }
 
@@ -394,7 +419,8 @@ function getAllEvents() {
  * @param Integer $days Count of days
  * @return Array New events filtered
  */
-function filterNextEvents($events, $days = 7) {
+function filterNextEvents($events, $days = 7)
+{
     $day = new \Moment\Moment();
     $nextEvents = [];
 
@@ -410,7 +436,7 @@ function filterNextEvents($events, $days = 7) {
                 // $day - $startEvent <= 0 AND $day - $endEvent >= 0
                 // meaning the event is started or starts today and isn't ended or ends today
                 return intval($day->from($event['startDate'])->getDays()) <= 0 && intval($day->from($event['endDate'])->getDays()) >= 0;
-            }))
+            })),
         ];
 
         // next day
@@ -426,7 +452,8 @@ function filterNextEvents($events, $days = 7) {
  * @param array $events
  * @return void
  */
-function filterInHourEvents($events) {
+function filterInHourEvents($events)
+{
     $day = new \Moment\Moment();
 
     return array_values(array_filter($events, function ($event) use ($day) {
