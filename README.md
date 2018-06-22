@@ -8,7 +8,7 @@ This API provides the data harvesting and normalization to be send to the "Vos l
 The attended data format is:
 
 ```js
-categories = ["", "", "", ""];
+categories = ["Concert", ...];
 events = [
     {
         "title": "<title>",
@@ -16,7 +16,7 @@ events = [
         "longDescription": "<long description>",
         "url": "<url>",
         "image": "<image url>",
-        "category": "<category, in >",
+        "category": "<category, from categories>",
         "startDate": "<start date, as ISO8601>",
         "endDate": "<end date, as ISO8601>",
         "location": {
